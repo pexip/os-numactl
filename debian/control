@@ -1,12 +1,14 @@
 Source: numactl
 Section: admin 
 Priority: optional
-Maintainer: Ian Wienand <ianw@debian.org>
-Uploaders: Al Stone <ahs3@debian.org>
+Maintainer: Pexip AS <packaging@pexip.com>
+XSBC-Pexip-Original-Maintainer: Ian Wienand <ianw@debian.org>
+XSBC-Pexip-Original-Uploaders: Al Stone <ahs3@debian.org>
 Standards-Version: 3.9.2
 Build-Depends: cdbs,
  debhelper,
  dh-buildinfo
+XS-Pexip-Upstream: http://archive.ubuntu.com/ubuntu/ precise
 
 Package: numactl
 Architecture: i386 amd64 ia64 mips mipsel powerpc
