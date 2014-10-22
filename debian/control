@@ -1,15 +1,17 @@
 Source: numactl
-Section: admin 
+Section: admin
 Priority: optional
 Maintainer: Ian Wienand <ianw@debian.org>
 Uploaders: Al Stone <ahs3@debian.org>
-Standards-Version: 3.9.2
+Standards-Version: 3.9.6
 Build-Depends: cdbs,
- debhelper,
- dh-buildinfo
+ autotools-dev,
+ debhelper (>= 9~),
+ dh-buildinfo, debhelper (>= 9)
 
 Package: numactl
-Architecture: i386 amd64 ia64 mips mipsel powerpc
+Multi-Arch: foreign
+Architecture: i386 amd64 ia64 mips mipsel mipsn32 mipsn32el mips64 mips64el powerpc powerpcspe x32 ppc64 ppc64el arm64 sparc hppa
 Depends: ${shlibs:Depends}, ${misc:Depends}, libnuma1 (>= 2.0.1)
 Description: NUMA scheduling and memory placement tool
  numactl runs processes with a specific NUMA (Non-Uniform Memory
@@ -19,8 +21,10 @@ Description: NUMA scheduling and memory placement tool
 Package: libnuma1
 Section: libs
 Priority: optional
+Multi-Arch: same
+Pre-Depends: ${misc:Pre-Depends}
 Depends: ${misc:Depends}, ${shlibs:Depends}
-Architecture: i386 amd64 ia64 mips mipsel powerpc
+Architecture: i386 amd64 ia64 mips mipsel mipsn32 mipsn32el mips64 mips64el powerpc powerpcspe x32 ppc64 ppc64el arm64 sparc hppa
 Description: Libraries for controlling NUMA policy
  Library to control specific NUMA (Non-Uniform Memory Architecture)
  scheduling or memory placement policies.
@@ -28,8 +32,9 @@ Description: Libraries for controlling NUMA policy
 Package: libnuma-dev
 Section: libdevel
 Priority: extra
+Multi-Arch: same
 Depends: ${misc:Depends}, libnuma1 (= ${binary:Version}), libc6-dev | libc-dev
-Architecture: i386 amd64 ia64 mips mipsel powerpc
+Architecture: any
 Description: Development files for libnuma
  Library to control specific NUMA (Non-Uniform Memory Architecture)
  scheduling or memory placement policies.  This package contains
@@ -38,8 +43,9 @@ Description: Development files for libnuma
 Package: libnuma-dbg
 Section: debug
 Priority: extra
+Multi-Arch: same
 Depends: ${misc:Depends}, libnuma1 (= ${binary:Version}), libc6-dev | libc-dev
-Architecture:  i386 amd64 ia64 mips mipsel powerpc
+Architecture: i386 amd64 ia64 mips mipsel mipsn32 mipsn32el mips64 mips64el powerpc powerpcspe x32 ppc64 ppc64el arm64 sparc hppa
 Description: Debug package for libnuma
  Library to control specific NUMA (Non-Uniform Memory Architecture)
  scheduling or memory placement policies.  This package contains

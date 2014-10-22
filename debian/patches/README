@@ -1,8 +1,6 @@
 patches
 =======
 
-None (yay!)
-
 old patches
 ===========
 numastatman.diff  : add man page for numastat - removed 0.8
@@ -21,3 +19,4 @@ mips.patch : fixup for MIPS support -- fixed 2.0.1
 hppa.patch : fix for hppa syscalls (applies ontop of mips.patch) -- fixed 2.0.1
 lm-override.patch : make sure -lm for numademo -- fixed 2.0.1
 static-lib.patch : build a static library -- fixed 2.0.1
+001_no-numa.patch : workaround crash on systems with no numa -- fixed 2.0.10-rc2
