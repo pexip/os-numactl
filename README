@@ -16,9 +16,6 @@ policies (prefered, interleave)
 
 See the manpages numactl.8 and numa.3 for details.
 
-Source code maintenance:
-  https://github.com/numactl/numactl/
-
 Copyright:
 
 numactl and the demo programs are under the GNU General Public License, v.2

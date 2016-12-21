@@ -3,15 +3,17 @@ Section: admin
 Priority: optional
 Maintainer: Ian Wienand <ianw@debian.org>
 Uploaders: Al Stone <ahs3@debian.org>
-Standards-Version: 3.9.6
+Standards-Version: 3.9.8
 Build-Depends: cdbs,
  autotools-dev,
- debhelper (>= 9~),
- dh-buildinfo, debhelper (>= 9)
+ dh-autoreconf,
+ debhelper,
+ dh-buildinfo, dh-autoreconf, debhelper (>= 9.20160114~)
+Homepage: http://oss.sgi.com/projects/libnuma/
 
 Package: numactl
 Multi-Arch: foreign
-Architecture: i386 amd64 ia64 mips mipsel mipsn32 mipsn32el mips64 mips64el powerpc powerpcspe x32 ppc64 ppc64el arm64 sparc hppa
+Architecture: linux-any
 Depends: ${shlibs:Depends}, ${misc:Depends}, libnuma1 (>= 2.0.1)
 Description: NUMA scheduling and memory placement tool
  numactl runs processes with a specific NUMA (Non-Uniform Memory
@@ -24,7 +26,7 @@ Priority: optional
 Multi-Arch: same
 Pre-Depends: ${misc:Pre-Depends}
 Depends: ${misc:Depends}, ${shlibs:Depends}
-Architecture: i386 amd64 ia64 mips mipsel mipsn32 mipsn32el mips64 mips64el powerpc powerpcspe x32 ppc64 ppc64el arm64 sparc hppa
+Architecture: linux-any
 Description: Libraries for controlling NUMA policy
  Library to control specific NUMA (Non-Uniform Memory Architecture)
  scheduling or memory placement policies.
@@ -34,19 +36,8 @@ Section: libdevel
 Priority: extra
 Multi-Arch: same
 Depends: ${misc:Depends}, libnuma1 (= ${binary:Version}), libc6-dev | libc-dev
-Architecture: any
+Architecture: linux-any
 Description: Development files for libnuma
- Library to control specific NUMA (Non-Uniform Memory Architecture)
- scheduling or memory placement policies.  This package contains
- headers and manual pages relating to the library.
-
-Package: libnuma-dbg
-Section: debug
-Priority: extra
-Multi-Arch: same
-Depends: ${misc:Depends}, libnuma1 (= ${binary:Version}), libc6-dev | libc-dev
-Architecture: i386 amd64 ia64 mips mipsel mipsn32 mipsn32el mips64 mips64el powerpc powerpcspe x32 ppc64 ppc64el arm64 sparc hppa
-Description: Debug package for libnuma
  Library to control specific NUMA (Non-Uniform Memory Architecture)
  scheduling or memory placement policies.  This package contains
  headers and manual pages relating to the library.

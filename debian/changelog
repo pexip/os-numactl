@@ -1,3 +1,30 @@
+numactl (2.0.11-2.1) unstable; urgency=medium
+
+  * Non-maintainer upload.
+  * Try to build all the packages on all the linux architectures, armel and
+    armhf are still not supported, but all the others should to build now.
+  * Drop the -dbg package and rely on the automatically built ones (-dbgsym)
+  * Switch to 3.0 (quilt) format and drop deprecated simple-patchsys patch
+    system
+  * Bump Standards-Version to 3.9.8 (no further changes)
+  * Add .symbols file for libnuma1
+
+ -- Laurent Bigonville <bigon@debian.org>  Wed, 21 Dec 2016 19:27:02 +0100
+
+numactl (2.0.11-2) unstable; urgency=medium
+
+  * Fix building with no timestamps with autoconf reconfigure (Closes:
+    #814952) (Nishanth Aravamudan <nish.aravamudan@canonical.com>)
+
+ -- Ian Wienand <ianw@debian.org>  Sun, 13 Mar 2016 12:32:36 +1100
+
+numactl (2.0.11-1) unstable; urgency=medium
+
+  * Update to 2.0.11
+  * Update copyright to point to new github upstream
+
+ -- Ian Wienand <ianw@debian.org>  Sat, 12 Dec 2015 10:45:27 +1100
+
 numactl (2.0.10-1) unstable; urgency=medium
 
   * Update to 2.0.10 final
