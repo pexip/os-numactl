@@ -8,7 +8,7 @@ Standards-Version: 3.9.2
 Build-Depends: cdbs,
  debhelper,
  dh-buildinfo
-XS-Pexip-Upstream: http://archive.ubuntu.com/ubuntu/ precise
+XS-Pexip-Upstream: http://ftp.debian.org/debian/ jessie
 
 Package: numactl
 Architecture: i386 amd64 ia64 mips mipsel powerpc
