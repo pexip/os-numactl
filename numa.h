@@ -53,6 +53,7 @@ struct bitmask *numa_bitmask_clearall(struct bitmask *);
 struct bitmask *numa_bitmask_setbit(struct bitmask *, unsigned int);
 struct bitmask *numa_bitmask_clearbit(struct bitmask *, unsigned int);
 unsigned int numa_bitmask_nbytes(struct bitmask *);
+unsigned int numa_bitmask_weight(const struct bitmask *);
 struct bitmask *numa_bitmask_alloc(unsigned int);
 void numa_bitmask_free(struct bitmask *);
 int numa_bitmask_equal(const struct bitmask *, const struct bitmask *);
@@ -237,6 +238,8 @@ void numa_police_memory(void *start, size_t size);
 
 /* Run current task only on nodes in mask */
 int numa_run_on_node_mask(struct bitmask *mask);
+/* Run current task on nodes in mask without any cpuset awareness */
+int numa_run_on_node_mask_all(struct bitmask *mask);
 /* Run current task only on node */
 int numa_run_on_node(int node);
 /* Return current mask of nodes the task can run on */
@@ -310,10 +313,18 @@ int numa_sched_getaffinity(pid_t, struct bitmask *);
 int numa_sched_setaffinity(pid_t, struct bitmask *);
 
 /* Convert an ascii list of nodes to a bitmask */
-struct bitmask *numa_parse_nodestring(char *);
+struct bitmask *numa_parse_nodestring(const char *);
+
+/* Convert an ascii list of nodes to a bitmask without current nodeset
+ * dependency */
+struct bitmask *numa_parse_nodestring_all(const char *);
 
 /* Convert an ascii list of cpu to a bitmask */
-struct bitmask *numa_parse_cpustring(char *);
+struct bitmask *numa_parse_cpustring(const char *);
+
+/* Convert an ascii list of cpu to a bitmask without current taskset
+ * dependency */
+struct bitmask *numa_parse_cpustring_all(const char *);
 
 /*
  * The following functions are for source code compatibility
