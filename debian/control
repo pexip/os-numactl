@@ -11,7 +11,7 @@ Build-Depends: cdbs,
  debhelper,
  dh-buildinfo, dh-autoreconf, debhelper (>= 9.20160114~)
 Homepage: http://oss.sgi.com/projects/libnuma/
-XS-Pexip-Upstream: http://ftp.debian.org/debian/ stretch
+XS-Pexip-Upstream: http://ftp.debian.org/debian/ buster
 
 Package: numactl
 Multi-Arch: foreign
