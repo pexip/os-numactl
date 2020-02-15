@@ -42,9 +42,9 @@ static void parse_numbers(char *s, int *iptr)
 		/* Skip unavailable nodes */
 		while (j<=maxnode && !numa_bitmask_isbitset(numa_nodes_ptr, j))
 			j++;
-		*(iptr+j) = d;
 		if (s == end)
 			break;
+		*(iptr+j) = d;
 		s = end;
 	}
 }
@@ -104,7 +104,7 @@ static int read_distance_table(void)
 	}
 	distance_numnodes = maxnode;
 	distance_table = table;
-	return 0;		
+	return 0;
 }
 
 int numa_distance(int a, int b)
@@ -114,5 +114,7 @@ int numa_distance(int a, int b)
 		if (err < 0)
 			return 0;
 	}
+	if ((unsigned)a >= distance_numnodes || (unsigned)b >= distance_numnodes)
+		return 0;
 	return distance_table[a * distance_numnodes + b];
 }
