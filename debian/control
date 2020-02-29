@@ -10,7 +10,9 @@ Build-Depends: cdbs,
  dh-autoreconf,
  debhelper,
  dh-buildinfo, dh-autoreconf, debhelper (>= 9.20160114~)
-Homepage: http://oss.sgi.com/projects/libnuma/
+Homepage: https://github.com/numactl/numactl
+Vcs-Browser: https://salsa.debian.org/debian/numactl
+Vcs-Git: https://salsa.debian.org/debian/numactl.git
 XS-Pexip-Upstream: http://ftp.debian.org/debian/ buster
 
 Package: numactl
@@ -35,7 +37,7 @@ Description: Libraries for controlling NUMA policy
 
 Package: libnuma-dev
 Section: libdevel
-Priority: extra
+Priority: optional
 Multi-Arch: same
 Depends: ${misc:Depends}, libnuma1 (= ${binary:Version}), libc6-dev | libc-dev
 Architecture: linux-any

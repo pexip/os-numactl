@@ -1,3 +1,40 @@
+numactl (2.0.12-1) unstable; urgency=medium
+
+  * Update to 2.0.12
+  * Update debian/watch file to github
+  * Import into salsa.debian.org; add Vcs links to control
+  * debian/patches/Allow-building-on-ARM-system.patch:
+     - included upstream
+  * debian/patches/Add-NAME-section-to-numastat-manpage.patch:
+     - included upstream
+  * debian/patches/README: remove as better tracked by git commits
+    now
+  * debian/control.in : remove; just use plain control file as it is out
+    of sync.
+
+ -- Ian Wienand <ianw@debian.org>  Sat, 08 Sep 2018 12:51:50 +1000
+
+numactl (2.0.11-2.2) unstable; urgency=medium
+
+  * Non-maintainer upload.
+  * debian/patches/Allow-building-on-ARM-systems.patch:
+    - add __arm__ to avoid failure due to missing syscalls.
+    - return -1 and set errno to ENOSYS on migrate_pages function
+      if __NR_migrate_pages is undefined, thanks Uwe Kleine-König
+      and Tiago Stürmer Daitx. Closes: #796802. LP: #1711478.
+  * Install memhog and migspeed. Closes: #882873. Thanks Manoj Iyer.
+  * debian/control: Correct project Homepage link. Closes: #894825.
+  * Bump Standards-Version to 4.1.4:
+    - libnuma-dev is now Priority: optional (extra is deprecated).
+  * debian/patches/Add-NAME-section-to-numastat-manpage.patch: Add
+    "NAME" section to manpage for proper parsing by commands like apropos
+    and whatis.
+  * debian/numactl.docs: The upstream changelog is already installed
+    as /usr/share/doc/numactl/changelog.gz, no need to install another
+    copy.
+
+ -- dann frazier <dannf@debian.org>  Tue, 17 Apr 2018 16:11:23 -0600
+
 numactl (2.0.11-2.1pexip1) pexip; urgency=medium
 
   * Migrate to Stretch
