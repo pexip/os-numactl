@@ -1,3 +1,9 @@
+numactl (2.0.12-1+b1pexip2) pexip-bullseye; urgency=medium
+
+  * Bullseye rebuild for ARM64 inclusion
+
+ -- Mark Hymers <mark.hymers@pexip.com>  Mon, 05 Sep 2022 10:34:48 +0100
+
 numactl (2.0.12-1+b1pexip1) pexip-bullseye; urgency=medium
 
   * Bump version number so supercede bullseye binNMU.
