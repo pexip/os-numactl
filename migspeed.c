@@ -14,20 +14,12 @@
 #include <unistd.h>
 #include "util.h"
 
-char *memory;
+static const char *optstr = "hvp:";
+static char *cmd;
+static int verbose;
+static unsigned long pages = 1000;
 
-unsigned long pages = 1000;
-
-unsigned long pagesize;
-
-const char *optstr = "hvp:";
-
-char *cmd;
-
-int verbose;
-struct timespec start,end;
-
-void usage(void)
+static void usage(void)
 {
 	printf("usage %s [-p pages] [-h] [-v] from-nodes to-nodes\n", cmd);
 	printf("      from and to nodes may specified in form N or N-N\n");
@@ -38,7 +30,7 @@ void usage(void)
 	exit(1);
 }
 
-void displaymap(void)
+static void displaymap(void)
 {
 	FILE *f = fopen("/proc/self/numa_maps","r");
 
@@ -56,7 +48,6 @@ void displaymap(void)
 		if (!strstr(buffer, "bind"))
 			continue ;
 		printf("%s", buffer);
-
 	}
 	fclose(f);
 }
@@ -70,6 +61,9 @@ int main(int argc, char *argv[])
 	double duration, mbytes;
 	struct bitmask *from;
 	struct bitmask *to;
+	char *memory = NULL;
+	unsigned long pagesize;
+	struct timespec start,end;
 
 	pagesize = getpagesize();
 
@@ -136,7 +130,6 @@ int main(int argc, char *argv[])
 				pages, pagesize);
 
 	memory = memalign(pagesize, bytes);
-
 	if (!memory) {
 		printf("Out of Memory\n");
 		exit(2);

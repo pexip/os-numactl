@@ -24,6 +24,7 @@
 #include <ctype.h>
 #include <sys/time.h>
 #include "numa.h"
+#include "util.h"
 #ifdef HAVE_STREAM_LIB
 #include "stream_lib.h"
 #endif
@@ -37,9 +38,9 @@ static inline void clearcache(void *a, unsigned size) {}
 #endif
 #define FRACT_NODES 8
 #define FRACT_MASKS 32
-int fract_nodes;
-int *node_to_use;
-unsigned long msize;
+static int fract_nodes;
+static int *node_to_use;
+static unsigned long msize;
 
 /* Should get this from cpuinfo, but on !x86 it's not there */
 enum {
@@ -56,11 +57,10 @@ enum test {
 	PTRCHASE,
 } thistest;
 
-char *delim = " ";
-int force;
-int regression_testing=0;
+static char *delim = " ";
+static int regression_testing=0;
 
-char *testname[] = {
+static char *testname[] = {
 	"memset",
 	"memcpy",
 	"forward",
@@ -75,7 +75,7 @@ char *testname[] = {
 	NULL,
 };
 
-void output(char *title, char *result)
+static void output(char *title, char *result)
 {
 	if (!isspace(delim[0]))
 		printf("%s%s%s\n", title,delim, result);
@@ -84,7 +84,7 @@ void output(char *title, char *result)
 }
 
 #ifdef HAVE_STREAM_LIB
-void do_stream(char *name, unsigned char *mem)
+static void do_stream(char *name, unsigned char *mem)
 {
 	int i;
 	char title[100], buf[100];
@@ -122,7 +122,7 @@ static int cmp_node(const void *ap, const void *bp)
 	return a->val - b->val;
 }
 
-void **ptrchase_init(unsigned char *mem)
+static void **ptrchase_init(unsigned char *mem)
 {
 	long i;
 	union node *nodes = (union node *)mem;
@@ -147,7 +147,7 @@ static inline unsigned long long timerfold(struct timeval *tv)
 
 #define LOOPS 10
 
-void memtest(char *name, unsigned char *mem)
+static void memtest(char *name, unsigned char *mem)
 {
 	long k;
 	struct timeval start, end, res;
@@ -285,7 +285,7 @@ void memtest(char *name, unsigned char *mem)
 	numa_free(mem, msize);
 }
 
-int popcnt(unsigned long val)
+static int popcnt(unsigned long val)
 {
 	int i = 0, cnt = 0;
 	while (val >> i) {
@@ -296,23 +296,27 @@ int popcnt(unsigned long val)
 	return cnt;
 }
 
-int max_node, numnodes;
+static int numnodes;
 
-void get_node_list()
+static int get_node_list(void)
 {
         int a, got_nodes = 0;
+	int max_node;
         long free_node_sizes;
 
         numnodes = numa_num_configured_nodes();
         node_to_use = (int *)malloc(numnodes * sizeof(int));
         max_node = numa_max_node();
         for (a = 0; a <= max_node; a++) {
-                if(numa_node_size(a, &free_node_sizes) != -1)
+                if (numa_node_size(a, &free_node_sizes) > 0)
                         node_to_use[got_nodes++] = a;
         }
+        if(got_nodes != numnodes)
+                return -1;
+	return got_nodes;
 }
 
-void test(enum test type)
+static void test(enum test type)
 {
 	unsigned long mask;
 	int i, k;
@@ -332,7 +336,7 @@ void test(enum test type)
 
 	memtest("memory interleaved on all nodes", numa_alloc_interleaved(msize));
 	for (i = 0; i < numnodes; i++) {
-		if (regression_testing && (node_to_use[i] % fract_nodes)) {
+		if (regression_testing && (i % fract_nodes)) {
 		/* for regression testing (-t) do only every eighth node */
 			continue;
 		}
@@ -366,6 +370,18 @@ void test(enum test type)
 				strcat(buf, buf2);
 			}
 		memtest(buf, numa_alloc_interleaved_subset(msize, nodes));
+
+		if (!numa_has_preferred_many())
+			continue;
+
+		sprintf(buf, "memory preferred on");
+		for (k = 0; k < numnodes; k++)
+			if ((1UL<<node_to_use[k]) & mask) {
+				sprintf(buf2, " %d", node_to_use[k]);
+				strcat(buf, buf2);
+			}
+		numa_set_preferred_many(nodes);
+		memtest(buf, numa_alloc(msize));
 	}
 
 	for (i = 0; i < numnodes; i++) {
@@ -375,7 +391,7 @@ void test(enum test type)
 		}
 		printf("setting preferred node to %d\n", node_to_use[i]);
 		numa_set_preferred(node_to_use[i]);
-		memtest("memory without policy", numa_alloc(msize));
+		memtest("memory with preferred policy", numa_alloc(msize));
 	}
 
 	numa_set_interleave_mask(numa_all_nodes_ptr);
@@ -383,12 +399,14 @@ void test(enum test type)
 
 	if (numnodes > 0) {
 		numa_bitmask_clearall(nodes);
-		numa_bitmask_setbit(nodes, 0);
-		numa_bitmask_setbit(nodes, 1);
+		numa_bitmask_setbit(nodes, node_to_use[0]);
+		numa_bitmask_setbit(nodes, node_to_use[1]);
 		numa_set_interleave_mask(nodes);
-		memtest("manual interleaving on node 0/1", numa_alloc(msize));
+		memtest("manual interleaving on first two nodes", numa_alloc(msize));
 		printf("current interleave node %d\n", numa_get_interleave_node());
 	}
+
+	numa_bitmask_free(nodes);
 
 	numa_set_interleave_mask(numa_no_nodes_ptr);
 
@@ -397,7 +415,7 @@ void test(enum test type)
 	for (i = 0; i < numnodes; i++) {
 		int oldhn = numa_preferred();
 
-		if (regression_testing && (node_to_use[i] % fract_nodes)) {
+		if (regression_testing && (i % fract_nodes)) {
 		/* for regression testing (-t) do only every eighth node */
 			continue;
 		}
@@ -411,9 +429,9 @@ void test(enum test type)
 
 		if (numnodes >= 2) {
 			numa_bitmask_clearall(nodes);
-			numa_bitmask_setbit(nodes, 0);
-			numa_bitmask_setbit(nodes, 1);
-			memtest("memory interleaved on node 0/1",
+			numa_bitmask_setbit(nodes, node_to_use[0]);
+			numa_bitmask_setbit(nodes, node_to_use[1]);
+			memtest("memory interleaved on first two nodes",
 				numa_alloc_interleaved_subset(msize, nodes));
 		}
 
@@ -436,19 +454,35 @@ void test(enum test type)
 		numa_set_localalloc();
 		memtest("local allocation", numa_alloc(msize));
 
-		numa_set_preferred((node_to_use[i]+1) % numnodes );
+#define set_pref_many(__i) do {			\
+        numa_bitmask_clearall(nodes);		\
+        numa_bitmask_setbit(nodes, __i);	\
+        numa_set_preferred_many(nodes);		\
+} while (0)
+		numa_set_preferred(node_to_use[(i + 1) % numnodes]);
 		memtest("setting wrong preferred node", numa_alloc(msize));
 		numa_set_preferred(node_to_use[i]);
 		memtest("setting correct preferred node", numa_alloc(msize));
-		numa_set_preferred(-1);
+
+		if (numa_has_preferred_many()) {
+			set_pref_many(node_to_use[(i + 1) % numnodes]);
+			memtest("setting wrong preferred-many nodes",
+					numa_alloc(msize));
+			set_pref_many(node_to_use[i]);
+			memtest("setting correct preferred-many nodes",
+					numa_alloc(msize));
+		}
+#undef set_pref_many
+
+		numa_set_localalloc();
 		if (!delim[0])
 			printf("\n\n\n");
 	}
-
+	numa_bitmask_free(nodes);
 	/* numa_run_on_node_mask is not tested */
 }
 
-void usage(void)
+static void usage(void)
 {
 	int i;
 	printf("usage: numademo [-S] [-f] [-c] [-e] [-t] msize[kmg] {tests}\nNo tests means run all.\n");
@@ -461,22 +495,11 @@ void usage(void)
 	exit(1);
 }
 
-/* duplicated to make numademo standalone */
-long memsize(char *s)
-{
-	char *end;
-	long length = strtoul(s,&end,0);
-	switch (toupper(*end)) {
-	case 'G': length *= 1024;  /*FALL THROUGH*/
-	case 'M': length *= 1024;  /*FALL THROUGH*/
-	case 'K': length *= 1024; break;
-	}
-	return length;
-}
-
 int main(int ac, char **av)
 {
 	int simple_tests = 0;
+	int nr_nodes;
+	int force = 0;
 
 	while (av[1] && av[1][0] == '-') {
 		ac--;
@@ -512,7 +535,17 @@ int main(int ac, char **av)
 		if (!force)
 			exit(1);
 	}
-	get_node_list();
+	nr_nodes = get_node_list();
+	if(nr_nodes == -1){
+		fprintf(stderr, "Configured Nodes does not match available memory nodes\n");
+		exit(1);
+	}
+
+	if (nr_nodes < 2) {
+		printf("A minimum of 2 nodes is required for this test.\n");
+		exit(77);
+	}
+
 	printf("%d nodes available\n", numnodes);
 	fract_nodes = (((numnodes-1)/8)*2) + FRACT_NODES;
 
@@ -566,5 +599,6 @@ int main(int ac, char **av)
 			}
 		}
 	}
+	free(node_to_use);
 	return 0;
 }

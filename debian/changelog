@@ -1,3 +1,50 @@
+numactl (2.0.16-1) unstable; urgency=medium
+
+  [ Debian Janitor ]
+  * Set debhelper-compat version in Build-Depends.
+  * Set upstream metadata fields: Repository-Browse.
+  * Remove constraints unnecessary since buster (oldstable):
+    + numactl: Drop versioned constraint on libnuma1 in Depends.
+
+  [ Ian Wienand ]
+  * New upstream version 2.0.16
+
+ -- Ian Wienand <ianw@debian.org>  Tue, 27 Dec 2022 10:30:33 +1100
+
+numactl (2.0.15-1) unstable; urgency=medium
+
+  * New upstream version 2.0.15
+  * Update symbols for 2.0.15
+
+ -- Ian Wienand <ianw@debian.org>  Thu, 08 Sep 2022 13:48:33 +1000
+
+numactl (2.0.14-3) unstable; urgency=medium
+
+  * Only install numa.3 in -dev package (Closes: #994821)
+
+ -- Ian Wienand <ianw@debian.org>  Wed, 22 Sep 2021 10:54:16 +1000
+
+numactl (2.0.14-2) unstable; urgency=medium
+
+  * Fix build depends for cdbs removal
+  * Don't include move_pages (Closes: #994832)
+
+ -- Ian Wienand <ianw@debian.org>  Wed, 22 Sep 2021 05:08:17 +1000
+
+numactl (2.0.14-1) unstable; urgency=medium
+
+  [ Ondřej Nový ]
+  * d/control: Removing redundant Priority field in binary package
+  * d/changelog: Remove trailing whitespaces
+
+  [ Ian Wienand ]
+  * New upstream version 2.0.14
+  * Update compat to 13
+  * Update standards version
+  * Switch packaging to debhelper (Closes: #950534, #991847, #849009, #895960)
+
+ -- Ian Wienand <ianw@debian.org>  Tue, 21 Sep 2021 15:42:03 +1000
+
 numactl (2.0.12-1) unstable; urgency=medium
 
   * Update to 2.0.12
@@ -387,7 +434,7 @@ numactl (0.8-1) unstable; urgency=low
 numactl (0.7pre2-6) unstable; urgency=low
 
   * Closes: #329755 -- add expansion of NUMA acronym in control
-  * Closes: #343490 -- add patch to assume only one node for SMP 
+  * Closes: #343490 -- add patch to assume only one node for SMP
     (patch from Samuel Thibault <samuel.thibault@ens-lyon.org>)
 
  -- Ian Wienand <ianw@gelato.unsw.edu.au>  Fri, 16 Dec 2005 10:02:58 +1100
@@ -397,13 +444,13 @@ numactl (0.7pre2-5) unstable; urgency=low
   * patches/man-section.diff : fix up man sections to stop lintian
   * move .so out of non-dev package
   * don't autogenerate control file; done by external scripts now
-  
+
  -- Ian Wienand <ianw@gelato.unsw.edu.au>  Fri, 25 Nov 2005 17:04:25 +1100
 
 numactl (0.7pre2-4) unstable; urgency=medium
 
   * update build infrastructre; more patches less modifying upstream
-  * Closes: #338358 -- fix typo to put includes in right directory 
+  * Closes: #338358 -- fix typo to put includes in right directory
 
  -- Ian Wienand <ianw@gelato.unsw.edu.au>  Thu, 10 Nov 2005 10:14:45 +1100
 
