@@ -58,13 +58,19 @@ numa \- NUMA policy library
 .br
 .BI "struct bitmask *numa_parse_cpustring_all(const char *" string );
 .sp
-.BI "long numa_node_size(int " node ", long *" freep );
+.BI "long long numa_node_size(int " node ", long long*" freep );
 .br
 .BI "long long numa_node_size64(int " node ", long long *" freep );
 .sp
 .B int numa_preferred(void);
 .br
+.B int numa_has_preferred_many(void);
+.br
+.B struct bitmask *numa_preferred_many(void);
+.br
 .BI "void numa_set_preferred(int " node );
+.br
+.BI "void numa_set_preferred_many(struct bitmask *" nodemask );
 .br
 .BI "int numa_get_interleave_node(void);
 .br
@@ -79,6 +85,8 @@ numa \- NUMA policy library
 .BI "void numa_set_localalloc(void);
 .br
 .BI "void numa_set_membind(struct bitmask *" nodemask );
+.br
+.BI "void numa_set_membind_balancing(struct bitmask *" nodemask );
 .br
 .B struct bitmask *numa_get_membind(void);
 .sp
@@ -123,6 +131,8 @@ numa \- NUMA policy library
 .BI "int numa_sched_setaffinity(pid_t " pid ", struct bitmask *" mask );
 .br
 .BI "int numa_node_to_cpus(int " node ", struct bitmask *" mask ");
+.br
+.BI "void numa_node_to_cpu_update();"
 .br
 .BI "int numa_node_of_cpu(int " cpu ");
 .sp
@@ -232,6 +242,7 @@ Most functions in this library are only concerned about numa nodes and
 their memory.
 The exceptions to this are:
 .IR numa_node_to_cpus (),
+.IR numa_node_to_cpu_update (),
 .IR numa_node_of_cpu (),
 .IR numa_bind (),
 .IR numa_run_on_node (),
@@ -409,11 +420,7 @@ On error it returns \-1.
 
 .BR numa_node_size64 ()
 works the same as
-.BR numa_node_size ()
-except that it returns values as
-.I long long
-instead of
-.IR long .
+.BR numa_node_size ().
 This is useful on 32-bit architectures with large nodes.
 
 .BR numa_preferred ()
@@ -426,6 +433,16 @@ allocates memory, unless some other policy overrides this.
 .\" order of the current node's zonelist to return the correct
 .\" node.  Need to tighten this up with the syscall results.
 
+.BR numa_has_preferred_many ()
+Returns > 0 if the system supports multiple preferred nodes.
+
+.BR numa_preferred_many ()
+Returns the current set of preferred nodes. This implies the empty set when the
+policy isn't one used for preference
+.I (PREFERRED, PREFERRED_MANY, BIND).
+The caller is responsible for freeing the mask with
+.BR numa_bitmask_free ().
+
 .BR numa_set_preferred ()
 sets the preferred node for the current task to
 .IR node .
@@ -437,6 +454,16 @@ Passing a
 of \-1 argument specifies local allocation and is equivalent to
 calling
 .BR numa_set_localalloc ().
+
+.BR numa_set_preferred_many ()
+sets the preferred set of nodes for the current task to
+.IR nodemask .
+This is similar to
+.BR numa_set_preferred ()
+with the exception that it utilizes a different kernel interface to specify
+multiple preferred nodes.
+The caller is responsible for freeing the mask with
+.BR numa_bitmask_free ().
 
 .BR numa_get_interleave_mask ()
 returns the current interleave mask if the task's memory allocation policy
@@ -535,6 +562,19 @@ that contains nodes other than those in the mask returned by
 .IR numa_get_mems_allowed ()
 will result in an error.
 
+.BR numa_set_membind_balancing ()
+sets the memory allocation mask and enable the Linux kernel NUMA
+balancing for the task if the feature is supported by the kernel.
+The task will only allocate memory from the nodes set in
+.IR nodemask .
+Passing an empty
+.I nodemask
+or a
+.I nodemask
+that contains nodes other than those in the mask returned by
+.IR numa_get_mems_allowed ()
+will result in an error.
+
 .BR numa_get_membind ()
 returns the mask of nodes from which memory can currently be allocated.
 If the returned mask is equal to
@@ -550,7 +590,7 @@ if the specified
 .I node
 is externally denied to this process, this call will fail.
 This function is relatively slow compared to the
-.IR malloc (3),
+.IR malloc (3)
 family of functions.
 The memory must be freed
 with
@@ -593,8 +633,8 @@ argument will be rounded up to a multiple of the system page size.
 The nodes on which a process is allowed to allocate memory may
 be constrained externally.
 If this is the case, this function may fail.
-This function is relatively slow compare to
-.IR malloc (3),
+This function is relatively slow compared to the
+.IR malloc (3)
 family of functions and should only be used for large areas consisting
 of multiple pages.
 The interleaving works at page level and will only show an effect when the
@@ -610,7 +650,7 @@ bytes of memory with the current NUMA policy.
 The
 .I size
 argument will be rounded up to a multiple of the system page size.
-This function is relatively slow compare to the
+This function is relatively slow compared to the
 .IR malloc (3)
 family of functions.
 The memory must be freed
@@ -794,6 +834,12 @@ Use numa_allocate_cpumask() to create it.  If the bitmask is not long enough
 will be set to
 .I ERANGE
 and \-1 returned. On success 0 is returned.
+
+.BR numa_node_to_cpu_update ()
+Mark cpus bitmask of all nodes stale, then get the latest bitmask by calling
+.BR numa_node_to_cpus ()
+This allows to update the libnuma state after a CPU hotplug event. The application
+is in charge of detecting CPU hotplug events.
 
 .BR numa_node_of_cpu ()
 returns the node that a cpu belongs to. If the user supplies an invalid cpu

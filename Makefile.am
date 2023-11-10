@@ -12,9 +12,9 @@ include_HEADERS = numa.h numacompat1.h numaif.h
 
 noinst_HEADERS = numaint.h util.h
 
-dist_man_MANS = move_pages.2 numa.3 numactl.8 numastat.8 migratepages.8 migspeed.8
+dist_man_MANS = move_pages.2 numa.3 numactl.8 numastat.8 migratepages.8 migspeed.8 memhog.8
 
-EXTRA_DIST = README.md INSTALL.md
+EXTRA_DIST = README.md INSTALL.md LICENSE.GPL2 LICENSE.LGPL2.1
 
 numactl_SOURCES = numactl.c util.c shm.c shm.h
 numactl_LDADD = libnuma.la
@@ -22,9 +22,9 @@ numactl_LDADD = libnuma.la
 numastat_SOURCES = numastat.c
 numastat_CFLAGS = $(AM_CFLAGS) -std=gnu99
 
-numademo_SOURCES = numademo.c stream_lib.c stream_lib.h mt.c mt.h clearcache.c clearcache.h
+numademo_SOURCES = numademo.c stream_lib.c stream_lib.h mt.c mt.h clearcache.c util.c clearcache.h
 numademo_CPPFLAGS = $(AM_CPPFLAGS) -DHAVE_STREAM_LIB -DHAVE_MT -DHAVE_CLEAR_CACHE
-numademo_CFLAGS = -O3 -ffast-math -funroll-loops
+numademo_CFLAGS = $(AM_CFLAGS) -O3 -ffast-math -funroll-loops
 if HAVE_TREE_VECTORIZE
 numademo_CFLAGS += -ftree-vectorize
 endif
@@ -41,6 +41,9 @@ memhog_LDADD = libnuma.la
 
 libnuma_la_SOURCES = libnuma.c syscall.c distance.c affinity.c affinity.h sysfs.c sysfs.h rtnetlink.c rtnetlink.h versions.ldscript
 libnuma_la_LDFLAGS = -version-info 1:0:0 -Wl,--version-script,$(srcdir)/versions.ldscript -Wl,-init,numa_init -Wl,-fini,numa_fini
+if RISCV64
+libnuma_la_LDFLAGS += -latomic
+endif
 
 check_PROGRAMS = \
 	test/distance \
@@ -98,7 +101,7 @@ test_nodemap_LDADD = libnuma.la
 test_pagesize_SOURCES = test/pagesize.c
 test_pagesize_LDADD = libnuma.la
 
-test_prefered_SOURCES = test/prefered.c
+test_prefered_SOURCES = test/prefered.c util.c
 test_prefered_LDADD = libnuma.la
 
 test_randmap_SOURCES = test/randmap.c
@@ -134,6 +137,7 @@ TESTS = \
 	test/checkaffinity \
 	test/checktopology \
 	test/distance \
+	test/move_pages \
 	test/nodemap \
 	test/numademo \
 	test/regress \
@@ -150,6 +154,7 @@ SED_PROCESS = \
         -e 's,@exec_prefix\@,$(exec_prefix),g' \
         -e 's,@libdir\@,$(libdir),g' \
         -e 's,@includedir\@,$(includedir),g' \
+        -e 's,@LIBS\@,$(LIBS),g' \
         < $< > $@ || rm $@
 
 %.pc: %.pc.in Makefile

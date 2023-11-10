@@ -25,9 +25,13 @@ numactl \- Control NUMA policy for processes or shared memory
 [
 .B \-\-all
 ] [
+.B \-\-balancing
+] [
 .B \-\-interleave nodes
 ] [
 .B \-\-preferred node 
+] [
+.B \-\-preferred-many nodes
 ] [
 .B \-\-membind nodes
 ] [ 
@@ -83,7 +87,7 @@ with numactl options.
 may be specified as N,N,N or  N-N or N,N-N or  N-N,N-N and so forth.
 Relative
 .I nodes
-may be specifed as +N,N,N or  +N-N or +N,N-N and so forth. The + indicates that
+may be specified as +N,N,N or  +N-N or +N,N-N and so forth. The + indicates that
 the node numbers are relative to the process' set of allowed nodes in its
 current cpuset.
 A !N-N notation indicates the inverse of N-N, in other words all nodes
@@ -152,20 +156,34 @@ Physical
 may be specified as N,N,N or  N-N or N,N-N or  N-N,N-N and so forth.
 Relative
 .I cpus
-may be specifed as +N,N,N or  +N-N or +N,N-N and so forth. The + indicates that
+may be specified as +N,N,N or  +N-N or +N,N-N and so forth. The + indicates that
 the cpu numbers are relative to the process' set of allowed cpus in its
 current cpuset.
 A !N-N notation indicates the inverse of N-N, in other words all cpus
 except N-N.  If used with + notation, specify !+N-N.
 .TP
 .B \-\-localalloc, \-l 
-Always allocate on the current node.
+Try to allocate on the current node of the process, but if memory cannot be allocated there fall back to other nodes.
 .TP
 .B \-\-preferred=node
 Preferably allocate memory on 
 .I node,
 but if memory cannot be allocated there fall back to other nodes.
 This option takes only a single node number.
+Relative notation may be used.
+.TP
+.B \-\-balancing, \-b
+Enable Linux kernel NUMA balancing for the process if it is supported by kernel.
+This should only be used with
+.I \-\-membind, \-m
+only, otherwise ignored.
+.TP
+.B \-\-preferred-many=node
+Preferably allocate memory on
+.I nodes,
+but if memory cannot be allocated there fall back to other nodes.
+This option takes a mask of preferred nodes where the closest node to local is
+considered most preferred.
 Relative notation may be used.
 .TP
 .B \-\-show, \-s
@@ -187,6 +205,7 @@ above (
 .I \-\-interleave, 
 .I \-\-localalloc, 
 .I \-\-preferred,
+.I \-\-preferred-many,
 .I \-\-membind
 ).
 .TP
@@ -232,11 +251,11 @@ of the new segment then. Valid units are
 otherwise it specifies bytes.
 .TP
 .B \-\-shmid id
-Create or use an shared memory segment with numeric ID 
+Create or use a shared memory segment with numeric ID
 .I id
 .TP 
 .B \-\-shm shmkeyfile
-Create or use an shared memory segment, with the ID generated
+Create or use a shared memory segment, with the ID generated
 using 
 .I ftok(3) 
 from shmkeyfile
@@ -278,12 +297,19 @@ numactl \-\-cpunodebind=0 \-\-membind=0,1 -- process -l
 Run process as above, but with an option (-l) that would be confused with
 a numactl option.
 
+numactl \-\-cpunodebind=0 \-\-balancing \-\-membind=0,1 process
+Run process on node 0 with memory allocated on node 0 and 1.  Optimize the
+page placement with Linux kernel NUMA balancing mechanism if possible.
+
 numactl \-\-cpunodebind=netdev:eth0 \-\-membind=netdev:eth0 network-server
 Run network-server on the node of network device eth0 with its memory
 also in the same node.
 
 numactl \-\-preferred=1 numactl \-\-show
 Set preferred node 1 and show the resulting state.
+
+numactl \-\-preferred-many=0x3 numactl \-\-show
+Set preferred nodes 1 and 2, and show the resulting state.
 
 numactl --interleave=all --shm /tmp/shmkey 
 Interleave all of the sysv shared memory region specified by
@@ -299,7 +325,7 @@ Reset the policy for the shared memory file
 .I file
 to the default localalloc policy.
 .SH NOTES
-Requires an NUMA policy aware kernel.
+Requires a NUMA policy aware kernel.
 
 Command is not executed using a shell. If you want to use shell metacharacters
 in the child use sh -c as wrapper.

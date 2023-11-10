@@ -35,11 +35,11 @@ enum {
 #define MADV_NOHUGEPAGE 15
 #endif
 
-int repeat = 1;
 
-void usage(void)
+static void usage(void)
 {
-	printf("memhog [-rNUM] size[kmg] [policy [nodeset]]\n");
+	printf("memhog [-fFILE] [-rNUM] size[kmg] [policy [nodeset]]\n");
+	printf("-f mmap is backed by FILE\n");
 	printf("-rNUM repeat memset NUM times\n");
 	printf("-H disable transparent hugepages\n");
 	print_policies();
@@ -48,7 +48,7 @@ void usage(void)
 
 long length;
 
-void hog(void *map)
+static void hog(void *map)
 {
 	long i;
 	for (i = 0;  i < length; i += UNIT) {
@@ -72,6 +72,7 @@ int main(int ac, char **av)
 	int i;
 	int fd = -1;
 	bool disable_hugepage = false;
+	int repeat = 1;
 
 	nodes = numa_allocate_nodemask();
 	gnodes = numa_allocate_nodemask();
@@ -100,11 +101,13 @@ int main(int ac, char **av)
 	length = memsize(av[1]);
 	if (av[2] && numa_available() < 0) {
 		printf("Kernel doesn't support NUMA policy\n");
-		exit(1);
 	} else
 		loose = 1;
 	policy = parse_policy(av[2], av[3]);
-	if (policy != MPOL_DEFAULT)
+	if (policy == MPOL_MAX)
+		usage();
+
+	if (policy != MPOL_DEFAULT && policy != MPOL_LOCAL)
 		nodes = numa_parse_nodestring(av[3]);
         if (!nodes) {
 		printf ("<%s> is invalid\n", av[3]);

@@ -86,6 +86,8 @@ static struct policy {
 	int policy;
 	int noarg;
 } policies[] = {
+	{ "preferred-many", MPOL_PREFERRED_MANY, },
+	{ "local", MPOL_LOCAL, 1 },
 	{ "interleave", MPOL_INTERLEAVE, },
 	{ "membind",    MPOL_BIND, },
 	{ "preferred",   MPOL_PREFERRED, },
@@ -93,7 +95,7 @@ static struct policy {
 	{ NULL },
 };
 
-static char *policy_names[] = { "default", "preferred", "bind", "interleave" };
+static char *policy_names[] = { "default", "preferred", "bind", "interleave", "local", "preferred-many" };
 
 char *policy_name(int policy)
 {
@@ -109,15 +111,21 @@ int parse_policy(char *name, char *arg)
 {
 	int k;
 	struct policy *p = NULL;
+	int found = 0;
+
 	if (!name)
 		return MPOL_DEFAULT;
+	
+	while (*name == '-') name++;
 	for (k = 0; policies[k].name; k++) {
 		p = &policies[k];
-		if (!strcmp(p->name, name))
+		if (!strcmp(p->name, name)) {
+			found = 1;
 			break;
+		}
 	}
-	if (!p || !p->name || (!arg && !p->noarg))
-		usage();
+	if (!found || !p || !p->name || (!arg && !p->noarg))
+		return MPOL_MAX;
     return p->policy;
 }
 

@@ -20,6 +20,8 @@
 #include "numa.h"
 #include "numaif.h"
 #include "numaint.h"
+#include "config.h"
+#include "util.h"
 
 #define WEAK __attribute__((weak))
 
@@ -70,6 +72,16 @@
 #define __NR_move_pages xxx
 */
 
+#elif defined(__loongarch__)
+
+//reference to /usr/include/asm-generic/unistd.h
+
+#define __NR_mbind 235
+#define __NR_get_mempolicy 236
+#define __NR_set_mempolicy 237
+#define __NR_migrate_pages 238
+#define __NR_move_pages 239
+
 #elif defined(__mips__)
 
 #if _MIPS_SIM == _ABIO32
@@ -113,6 +125,14 @@
 /* https://bugs.debian.org/796802 */
 #warning "ARM does not implement the migrate_pages() syscall"
 
+#elif defined(__s390x__)
+
+#define __NR_mbind 268
+#define __NR_get_mempolicy 269
+#define __NR_set_mempolicy 270
+#define __NR_migrate_pages 287
+#define __NR_move_pages    310
+
 #elif !defined(DEPS_RUN)
 #error "Add syscalls for your architecture or update kernel headers"
 #endif
@@ -127,7 +147,7 @@
 
 /* glibc 2.11 seems to have working 6 argument sycall. Use the
    glibc supplied syscall in this case.
-   The version cut-off is rather arbitary and could be probably
+   The version cut-off is rather arbitrary and could be probably
    earlier. */
 
 #define syscall6 syscall
@@ -230,35 +250,33 @@ long WEAK move_pages(int pid, unsigned long count,
 }
 
 /* SLES8 glibc doesn't define those */
+SYMVER("numa_sched_setaffinity_v1", "numa_sched_setaffinity@libnuma_1.1")
 int numa_sched_setaffinity_v1(pid_t pid, unsigned len, const unsigned long *mask)
 {
 	return syscall(__NR_sched_setaffinity,pid,len,mask);
 }
-__asm__(".symver numa_sched_setaffinity_v1,numa_sched_setaffinity@libnuma_1.1");
 
+SYMVER("numa_sched_setaffinity_v2", "numa_sched_setaffinity@@libnuma_1.2")
 int numa_sched_setaffinity_v2(pid_t pid, struct bitmask *mask)
 {
 	return syscall(__NR_sched_setaffinity, pid, numa_bitmask_nbytes(mask),
 								mask->maskp);
 }
-__asm__(".symver numa_sched_setaffinity_v2,numa_sched_setaffinity@@libnuma_1.2");
 
+SYMVER("numa_sched_getaffinity_v1", "numa_sched_getaffinity@libnuma_1.1")
 int numa_sched_getaffinity_v1(pid_t pid, unsigned len, const unsigned long *mask)
 {
 	return syscall(__NR_sched_getaffinity,pid,len,mask);
-
 }
-__asm__(".symver numa_sched_getaffinity_v1,numa_sched_getaffinity@libnuma_1.1");
 
+SYMVER("numa_sched_getaffinity_v2", "numa_sched_getaffinity@@libnuma_1.2")
 int numa_sched_getaffinity_v2(pid_t pid, struct bitmask *mask)
 {
 	/* len is length in bytes */
 	return syscall(__NR_sched_getaffinity, pid, numa_bitmask_nbytes(mask),
 								mask->maskp);
 	/* sched_getaffinity returns sizeof(cpumask_t) */
-
 }
-__asm__(".symver numa_sched_getaffinity_v2,numa_sched_getaffinity@@libnuma_1.2");
 
 make_internal_alias(numa_sched_getaffinity_v1);
 make_internal_alias(numa_sched_getaffinity_v2);
