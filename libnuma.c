@@ -27,6 +27,7 @@
 #include <errno.h>
 #include <stdarg.h>
 #include <ctype.h>
+#include <assert.h>
 
 #include <sys/mman.h>
 #include <limits.h>
@@ -58,7 +59,9 @@ struct bitmask *numa_possible_cpus_ptr = NULL;
 struct bitmask *numa_nodes_ptr = NULL;
 static struct bitmask *numa_memnode_ptr = NULL;
 static unsigned long *node_cpu_mask_v1[NUMA_NUM_NODES];
+static char node_cpu_mask_v1_stale = 1;
 static struct bitmask **node_cpu_mask_v2;
+static char node_cpu_mask_v2_stale = 1;
 
 WEAK void numa_error(char *where);
 
@@ -76,6 +79,8 @@ static int numprocnode = -1;
 static int numproccpu = -1;
 static int nodemask_sz = 0;
 static int cpumask_sz = 0;
+
+static int has_preferred_many = 0;
 
 int numa_exit_on_error = 0;
 int numa_exit_on_warn = 0;
@@ -103,6 +108,8 @@ numa_init(void)
 	memset(&numa_no_nodes, 0, sizeof(numa_no_nodes));
 }
 
+static void cleanup_node_cpu_mask_v2(void);
+
 #define FREE_AND_ZERO(x) if (x) {	\
 		numa_bitmask_free(x);	\
 		x = NULL;		\
@@ -118,6 +125,16 @@ numa_fini(void)
 	FREE_AND_ZERO(numa_no_nodes_ptr);
 	FREE_AND_ZERO(numa_memnode_ptr);
 	FREE_AND_ZERO(numa_nodes_ptr);
+	cleanup_node_cpu_mask_v2();
+}
+
+static int numa_find_first(struct bitmask *mask)
+{
+	int i;
+	for (i = 0; i < mask->size; i++)
+		if (numa_bitmask_isbitset(mask, i))
+			return i;
+	return -1;
 }
 
 /*
@@ -584,6 +601,30 @@ set_configured_cpus(void)
 		numa_error("sysconf(NPROCESSORS_CONF) failed");
 }
 
+static void
+set_kernel_abi()
+{
+	int oldp;
+	struct bitmask *bmp, *tmp;
+	bmp = numa_allocate_nodemask();
+	tmp = numa_allocate_nodemask();
+
+	if (get_mempolicy(&oldp, bmp->maskp, bmp->size + 1, 0, 0) < 0)
+		goto out;
+
+	/* Assumes there's always a node 0, and it's online */
+	numa_bitmask_setbit(tmp, 0);
+	if (set_mempolicy(MPOL_PREFERRED_MANY, tmp->maskp, tmp->size) == 0) {
+		has_preferred_many++;
+		/* reset the old memory policy */
+		setpol(oldp, bmp);
+	}
+
+out:
+	numa_bitmask_free(tmp);
+	numa_bitmask_free(bmp);
+}
+
 /*
  * Initialize all the sizes.
  */
@@ -596,6 +637,7 @@ set_sizes(void)
 	set_numa_max_cpu();	/* size of kernel cpumask_t */
 	set_configured_cpus();	/* cpus listed in /sys/devices/system/cpu */
 	set_task_constraints(); /* cpus and nodes for current task */
+	set_kernel_abi();	/* man policy supported */
 }
 
 int
@@ -683,19 +725,19 @@ make_internal_alias(numa_max_node);
  * which for v1 is the size of a numa.h nodemask_t(in bits)-1.
  * but for v2 is the size of a kernel nodemask_t(in bits)-1.
  */
+SYMVER("numa_max_possible_node_v1", "numa_max_possible_node@libnuma_1.1")
 int
 numa_max_possible_node_v1(void)
 {
 	return ((sizeof(nodemask_t)*8)-1);
 }
-__asm__(".symver numa_max_possible_node_v1,numa_max_possible_node@libnuma_1.1");
 
+SYMVER("numa_max_possible_node_v2", "numa_max_possible_node@@libnuma_1.2")
 int
 numa_max_possible_node_v2(void)
 {
 	return numa_num_possible_nodes()-1;
 }
-__asm__(".symver numa_max_possible_node_v2,numa_max_possible_node@@libnuma_1.2");
 
 make_internal_alias(numa_max_possible_node_v1);
 make_internal_alias(numa_max_possible_node_v2);
@@ -804,6 +846,7 @@ int numa_available(void)
 	return 0;
 }
 
+SYMVER("numa_interleave_memory_v1", "numa_interleave_memory@libnuma_1.1")
 void
 numa_interleave_memory_v1(void *mem, size_t size, const nodemask_t *mask)
 {
@@ -813,14 +856,13 @@ numa_interleave_memory_v1(void *mem, size_t size, const nodemask_t *mask)
 	bitmask.maskp = (unsigned long *)mask;
 	dombind(mem, size, MPOL_INTERLEAVE, &bitmask);
 }
-__asm__(".symver numa_interleave_memory_v1,numa_interleave_memory@libnuma_1.1");
 
+SYMVER("numa_interleave_memory_v2", "numa_interleave_memory@@libnuma_1.2")
 void
 numa_interleave_memory_v2(void *mem, size_t size, struct bitmask *bmp)
 {
 	dombind(mem, size, MPOL_INTERLEAVE, bmp);
 }
-__asm__(".symver numa_interleave_memory_v2,numa_interleave_memory@@libnuma_1.2");
 
 void numa_tonode_memory(void *mem, size_t size, int node)
 {
@@ -832,6 +874,7 @@ void numa_tonode_memory(void *mem, size_t size, int node)
 	numa_bitmask_free(nodes);
 }
 
+SYMVER("numa_tonodemask_memory_v1", "numa_tonodemask_memory@libnuma_1.1")
 void
 numa_tonodemask_memory_v1(void *mem, size_t size, const nodemask_t *mask)
 {
@@ -841,26 +884,27 @@ numa_tonodemask_memory_v1(void *mem, size_t size, const nodemask_t *mask)
 	bitmask.size  = sizeof(nodemask_t);
 	dombind(mem, size,  bind_policy, &bitmask);
 }
-__asm__(".symver numa_tonodemask_memory_v1,numa_tonodemask_memory@libnuma_1.1");
 
+SYMVER("numa_tonodemask_memory_v2", "numa_tonodemask_memory@@libnuma_1.2")
 void
 numa_tonodemask_memory_v2(void *mem, size_t size, struct bitmask *bmp)
 {
 	dombind(mem, size,  bind_policy, bmp);
 }
-__asm__(".symver numa_tonodemask_memory_v2,numa_tonodemask_memory@@libnuma_1.2");
 
 void numa_setlocal_memory(void *mem, size_t size)
 {
-	dombind(mem, size, MPOL_PREFERRED, NULL);
+	dombind(mem, size, MPOL_LOCAL, NULL);
 }
 
 void numa_police_memory(void *mem, size_t size)
 {
 	int pagesize = numa_pagesize_int();
 	unsigned long i;
-	for (i = 0; i < size; i += pagesize)
-        ((volatile char*)mem)[i] = ((volatile char*)mem)[i];
+	char *p = mem;
+	for (i = 0; i < size; i += pagesize, p += pagesize)
+		__atomic_and_fetch(p, 0xff, __ATOMIC_RELAXED);
+
 }
 
 make_internal_alias(numa_police_memory);
@@ -893,6 +937,7 @@ void *numa_realloc(void *old_addr, size_t old_size, size_t new_size)
 	return mem;
 }
 
+SYMVER("numa_alloc_interleaved_subset_v1", "numa_alloc_interleaved_subset@libnuma_1.1")
 void *numa_alloc_interleaved_subset_v1(size_t size, const nodemask_t *mask)
 {
 	char *mem;
@@ -907,8 +952,8 @@ void *numa_alloc_interleaved_subset_v1(size_t size, const nodemask_t *mask)
 	dombind(mem, size, MPOL_INTERLEAVE, &bitmask);
 	return mem;
 }
-__asm__(".symver numa_alloc_interleaved_subset_v1,numa_alloc_interleaved_subset@libnuma_1.1");
 
+SYMVER("numa_alloc_interleaved_subset_v2", "numa_alloc_interleaved_subset@@libnuma_1.2")
 void *numa_alloc_interleaved_subset_v2(size_t size, struct bitmask *bmp)
 {
 	char *mem;
@@ -920,7 +965,6 @@ void *numa_alloc_interleaved_subset_v2(size_t size, struct bitmask *bmp)
 	dombind(mem, size, MPOL_INTERLEAVE, bmp);
 	return mem;
 }
-__asm__(".symver numa_alloc_interleaved_subset_v2,numa_alloc_interleaved_subset@@libnuma_1.2");
 
 make_internal_alias(numa_alloc_interleaved_subset_v1);
 make_internal_alias(numa_alloc_interleaved_subset_v2);
@@ -934,6 +978,7 @@ numa_alloc_interleaved(size_t size)
 /*
  * given a user node mask, set memory policy to use those nodes
  */
+SYMVER("numa_set_interleave_mask_v1", "numa_set_interleave_mask@libnuma_1.1")
 void
 numa_set_interleave_mask_v1(nodemask_t *mask)
 {
@@ -949,8 +994,8 @@ numa_set_interleave_mask_v1(nodemask_t *mask)
 	numa_bitmask_free(bmp);
 }
 
-__asm__(".symver numa_set_interleave_mask_v1,numa_set_interleave_mask@libnuma_1.1");
 
+SYMVER("numa_set_interleave_mask_v2", "numa_set_interleave_mask@@libnuma_1.2")
 void
 numa_set_interleave_mask_v2(struct bitmask *bmp)
 {
@@ -959,8 +1004,8 @@ numa_set_interleave_mask_v2(struct bitmask *bmp)
 	else
 		setpol(MPOL_INTERLEAVE, bmp);
 }
-__asm__(".symver numa_set_interleave_mask_v2,numa_set_interleave_mask@@libnuma_1.2");
 
+SYMVER("numa_get_interleave_mask_v1", "numa_get_interleave_mask@libnuma_1.1")
 nodemask_t
 numa_get_interleave_mask_v1(void)
 {
@@ -977,8 +1022,8 @@ numa_get_interleave_mask_v1(void)
 	numa_bitmask_free(bmp);
 	return mask;
 }
-__asm__(".symver numa_get_interleave_mask_v1,numa_get_interleave_mask@libnuma_1.1");
 
+SYMVER("numa_get_interleave_mask_v2", "numa_get_interleave_mask@@libnuma_1.2")
 struct bitmask *
 numa_get_interleave_mask_v2(void)
 {
@@ -991,7 +1036,6 @@ numa_get_interleave_mask_v2(void)
 		copy_bitmask_to_bitmask(numa_no_nodes_ptr, bmp);
 	return bmp;
 }
-__asm__(".symver numa_get_interleave_mask_v2,numa_get_interleave_mask@@libnuma_1.2");
 
 /* (undocumented) */
 int numa_get_interleave_node(void)
@@ -1027,7 +1071,7 @@ void *numa_alloc_local(size_t size)
 	if (mem == (char *)-1)
 		mem =  NULL;
 	else
-		dombind(mem, size, MPOL_PREFERRED, NULL);
+		dombind(mem, size, MPOL_LOCAL, NULL);
 	return mem;
 }
 
@@ -1035,10 +1079,13 @@ void numa_set_bind_policy(int strict)
 {
 	if (strict)
 		bind_policy = MPOL_BIND;
+	else if (has_preferred_many)
+		bind_policy = MPOL_PREFERRED_MANY;
 	else
 		bind_policy = MPOL_PREFERRED;
 }
 
+SYMVER("numa_set_membind_v1", "numa_set_membind@libnuma_1.1")
 void
 numa_set_membind_v1(const nodemask_t *mask)
 {
@@ -1048,16 +1095,29 @@ numa_set_membind_v1(const nodemask_t *mask)
 	bitmask.size  = sizeof(nodemask_t);
 	setpol(MPOL_BIND, &bitmask);
 }
-__asm__(".symver numa_set_membind_v1,numa_set_membind@libnuma_1.1");
 
+SYMVER("numa_set_membind_v2", "numa_set_membind@@libnuma_1.2")
 void
 numa_set_membind_v2(struct bitmask *bmp)
 {
 	setpol(MPOL_BIND, bmp);
 }
-__asm__(".symver numa_set_membind_v2,numa_set_membind@@libnuma_1.2");
 
 make_internal_alias(numa_set_membind_v2);
+
+void
+numa_set_membind_balancing(struct bitmask *bmp)
+{
+	/* MPOL_F_NUMA_BALANCING: ignore if unsupported */
+	if (set_mempolicy(MPOL_BIND | MPOL_F_NUMA_BALANCING,
+			  bmp->maskp, bmp->size + 1) < 0) {
+		if (errno == EINVAL) {
+			errno = 0;
+			numa_set_membind_v2(bmp);
+		} else
+			numa_error("set_mempolicy");
+	}
+}
 
 /*
  * copy a bitmask map body to a numa.h nodemask_t structure
@@ -1114,6 +1174,7 @@ copy_nodemask_to_bitmask(nodemask_t *nmp, struct bitmask *bmp)
 	}
 }
 
+SYMVER("numa_get_membind_v1", "numa_get_membind@libnuma_1.1")
 nodemask_t
 numa_get_membind_v1(void)
 {
@@ -1133,8 +1194,8 @@ numa_get_membind_v1(void)
 	numa_bitmask_free(bmp);
 	return nmp;
 }
-__asm__(".symver numa_get_membind_v1,numa_get_membind@libnuma_1.1");
 
+SYMVER("numa_get_membind_v2", "numa_get_membind@@libnuma_1.2")
 struct bitmask *
 numa_get_membind_v2(void)
 {
@@ -1147,7 +1208,6 @@ numa_get_membind_v2(void)
 		copy_bitmask_to_bitmask(numa_all_nodes_ptr, bmp);
 	return bmp;
 }
-__asm__(".symver numa_get_membind_v2,numa_get_membind@@libnuma_1.2");
 
 //TODO:  do we need a v1 nodemask_t version?
 struct bitmask *numa_get_mems_allowed(void)
@@ -1170,6 +1230,7 @@ void numa_free(void *mem, size_t size)
 	munmap(mem, size);
 }
 
+SYMVER("numa_parse_bitmap_v1", "numa_parse_bitmap@libnuma_1.1")
 int
 numa_parse_bitmap_v1(char *line, unsigned long *mask, int ncpus)
 {
@@ -1203,8 +1264,8 @@ numa_parse_bitmap_v1(char *line, unsigned long *mask, int ncpus)
 	}
 	return 0;
 }
-__asm__(".symver numa_parse_bitmap_v1,numa_parse_bitmap@libnuma_1.1");
 
+SYMVER("numa_parse_bitmap_v2", "numa_parse_bitmap@@libnuma_1.2")
 int
 numa_parse_bitmap_v2(char *line, struct bitmask *mask)
 {
@@ -1239,23 +1300,37 @@ numa_parse_bitmap_v2(char *line, struct bitmask *mask)
 	}
 	return 0;
 }
-__asm__(".symver numa_parse_bitmap_v2,numa_parse_bitmap@@libnuma_1.2");
 
-void
-static init_node_cpu_mask_v2(void)
+static void init_node_cpu_mask_v2(void)
 {
 	int nnodes = numa_max_possible_node_v2_int() + 1;
 	node_cpu_mask_v2 = calloc (nnodes, sizeof(struct bitmask *));
 }
 
+static void cleanup_node_cpu_mask_v2(void)
+{
+	if (node_cpu_mask_v2) {
+		int i;
+		int nnodes;
+		nnodes = numa_max_possible_node_v2_int() + 1;
+		for (i = 0; i < nnodes; i++) {
+			FREE_AND_ZERO(node_cpu_mask_v2[i]);
+		}
+		free(node_cpu_mask_v2);
+		node_cpu_mask_v2 = NULL;
+	}
+}
+
 /* This would be better with some locking, but I don't want to make libnuma
    dependent on pthreads right now. The races are relatively harmless. */
+SYMVER("numa_node_to_cpus_v1", "numa_node_to_cpus@libnuma_1.1")
 int
 numa_node_to_cpus_v1(int node, unsigned long *buffer, int bufferlen)
 {
 	int err = 0;
 	char fn[64];
 	FILE *f;
+	char update;
 	char *line = NULL;
 	size_t len = 0;
 	struct bitmask bitmask;
@@ -1271,7 +1346,8 @@ numa_node_to_cpus_v1(int node, unsigned long *buffer, int bufferlen)
 	}
 	if (bufferlen > buflen_needed)
 		memset(buffer, 0, bufferlen);
-	if (node_cpu_mask_v1[node]) {
+	update = __atomic_fetch_and(&node_cpu_mask_v1_stale, 0, __ATOMIC_RELAXED);
+	if (node_cpu_mask_v1[node] && !update) {
 		memcpy(buffer, node_cpu_mask_v1[node], buflen_needed);
 		return 0;
 	}
@@ -1312,14 +1388,21 @@ numa_node_to_cpus_v1(int node, unsigned long *buffer, int bufferlen)
 
 	/* slightly racy, see above */
 	if (node_cpu_mask_v1[node]) {
-		if (mask != buffer)
+		if (update) {
+			/*
+			 * There may be readers on node_cpu_mask_v1[], hence it can not
+			 * be freed.
+			 */
+			memcpy(node_cpu_mask_v1[node], mask, buflen_needed);
+			free(mask);
+			mask = NULL;
+		} else if (mask != buffer)
 			free(mask);
 	} else {
 		node_cpu_mask_v1[node] = mask;
 	}
 	return err;
 }
-__asm__(".symver numa_node_to_cpus_v1,numa_node_to_cpus@libnuma_1.1");
 
 /*
  * test whether a node has cpus
@@ -1329,6 +1412,7 @@ __asm__(".symver numa_node_to_cpus_v1,numa_node_to_cpus@libnuma_1.1");
 /*
  * deliver a bitmask of cpus representing the cpus on a given node
  */
+SYMVER("numa_node_to_cpus_v2", "numa_node_to_cpus@@libnuma_1.2")
 int
 numa_node_to_cpus_v2(int node, struct bitmask *buffer)
 {
@@ -1336,6 +1420,7 @@ numa_node_to_cpus_v2(int node, struct bitmask *buffer)
 	int nnodes = numa_max_node();
 	char fn[64], *line = NULL;
 	FILE *f;
+	char update;
 	size_t len = 0;
 	struct bitmask *mask;
 
@@ -1348,7 +1433,8 @@ numa_node_to_cpus_v2(int node, struct bitmask *buffer)
 	}
 	numa_bitmask_clearall(buffer);
 
-	if (node_cpu_mask_v2[node]) {
+	update = __atomic_fetch_and(&node_cpu_mask_v2_stale, 0, __ATOMIC_RELAXED);
+	if (node_cpu_mask_v2[node] && !update) {
 		/* have already constructed a mask for this node */
 		if (buffer->size < node_cpu_mask_v2[node]->size) {
 			errno = EINVAL;
@@ -1391,8 +1477,12 @@ numa_node_to_cpus_v2(int node, struct bitmask *buffer)
 	/* slightly racy, see above */
 	/* save the mask we created */
 	if (node_cpu_mask_v2[node]) {
+		if (update) {
+			copy_bitmask_to_bitmask(mask, node_cpu_mask_v2[node]);
+			numa_bitmask_free(mask);
+			mask = NULL;
 		/* how could this be? */
-		if (mask != buffer)
+		} else if (mask != buffer)
 			numa_bitmask_free(mask);
 	} else {
 		/* we don't want to cache faulty result */
@@ -1403,10 +1493,15 @@ numa_node_to_cpus_v2(int node, struct bitmask *buffer)
 	}
 	return err;
 }
-__asm__(".symver numa_node_to_cpus_v2,numa_node_to_cpus@@libnuma_1.2");
 
 make_internal_alias(numa_node_to_cpus_v1);
 make_internal_alias(numa_node_to_cpus_v2);
+
+void numa_node_to_cpu_update(void)
+{
+	__atomic_store_n(&node_cpu_mask_v1_stale, 1, __ATOMIC_RELAXED);
+	__atomic_store_n(&node_cpu_mask_v2_stale, 1, __ATOMIC_RELAXED);
+}
 
 /* report the node of the specified cpu */
 int numa_node_of_cpu(int cpu)
@@ -1438,6 +1533,7 @@ end:
 	return ret;
 }
 
+SYMVER("numa_run_on_node_mask_v1", "numa_run_on_node_mask@libnuma_1.1")
 int
 numa_run_on_node_mask_v1(const nodemask_t *mask)
 {
@@ -1490,13 +1586,13 @@ numa_run_on_node_mask_v1(const nodemask_t *mask)
 	}
 	return err;
 }
-__asm__(".symver numa_run_on_node_mask_v1,numa_run_on_node_mask@libnuma_1.1");
 
 /*
  * Given a node mask (size of a kernel nodemask_t) (probably populated by
  * a user argument list) set up a map of cpus (map "cpus") on those nodes.
  * Then set affinity to those cpus.
  */
+SYMVER("numa_run_on_node_mask_v2", "numa_run_on_node_mask@@libnuma_1.2")
 int
 numa_run_on_node_mask_v2(struct bitmask *bmp)
 {
@@ -1541,7 +1637,6 @@ numa_run_on_node_mask_v2(struct bitmask *bmp)
 
 	return err;
 }
-__asm__(".symver numa_run_on_node_mask_v2,numa_run_on_node_mask@@libnuma_1.2");
 
 make_internal_alias(numa_run_on_node_mask_v2);
 
@@ -1591,6 +1686,7 @@ numa_run_on_node_mask_all(struct bitmask *bmp)
 	return err;
 }
 
+SYMVER("numa_get_run_node_mask_v1", "numa_get_run_node_mask@libnuma_1.1")
 nodemask_t
 numa_get_run_node_mask_v1(void)
 {
@@ -1625,8 +1721,8 @@ free_cpus:
 	numa_bitmask_free(cpus);
 	return nmp;
 }
-__asm__(".symver numa_get_run_node_mask_v1,numa_get_run_node_mask@libnuma_1.1");
 
+SYMVER("numa_get_run_node_mask_v2", "numa_get_run_node_mask@@libnuma_1.2")
 struct bitmask *
 numa_get_run_node_mask_v2(void)
 {
@@ -1665,7 +1761,6 @@ free_cpus:
 	numa_bitmask_free(cpus);
 	return bmp;
 }
-__asm__(".symver numa_get_run_node_mask_v2,numa_get_run_node_mask@@libnuma_1.2");
 
 int
 numa_migrate_pages(int pid, struct bitmask *fromnodes, struct bitmask *tonodes)
@@ -1709,49 +1804,86 @@ out:
 	return ret;
 }
 
-int numa_preferred(void)
+static struct bitmask *__numa_preferred(void)
 {
 	int policy;
-	int ret;
 	struct bitmask *bmp;
 
 	bmp = numa_allocate_nodemask();
-	getpol(&policy, bmp);
-	if (policy == MPOL_PREFERRED || policy == MPOL_BIND) {
-		int i;
-		int max = numa_num_possible_nodes();
-		for (i = 0; i < max ; i++)
-			if (numa_bitmask_isbitset(bmp, i)){
-				ret = i;
-				goto end;
-			}
-	}
 	/* could read the current CPU from /proc/self/status. Probably
 	   not worth it. */
-	ret = 0; /* or random one? */
-end:
+	numa_bitmask_clearall(bmp);
+	getpol(&policy, bmp);
+
+	if (policy != MPOL_PREFERRED &&
+			policy != MPOL_PREFERRED_MANY &&
+			policy != MPOL_BIND)
+		return bmp;
+
+	if (numa_bitmask_weight(bmp) > 1)
+		numa_error(__FILE__);
+
+	return bmp;
+}
+
+int numa_preferred(void)
+{
+	int first_node = 0;
+	struct bitmask *bmp;
+
+	bmp = __numa_preferred();
+	first_node = numa_find_first(bmp);
 	numa_bitmask_free(bmp);
-	return ret;
+	
+	return first_node;
+}
+
+static void __numa_set_preferred(struct bitmask *bmp)
+{
+	int nodes = numa_bitmask_weight(bmp);
+	if (nodes > 1)
+		numa_error(__FILE__);
+	setpol(nodes ? MPOL_PREFERRED : MPOL_LOCAL, bmp);
 }
 
 void numa_set_preferred(int node)
 {
-	struct bitmask *bmp;
-
-	bmp = numa_allocate_nodemask();
-	if (node >= 0) {
-		numa_bitmask_setbit(bmp, node);
-		setpol(MPOL_PREFERRED, bmp);
-	} else
-		setpol(MPOL_DEFAULT, bmp);
+	struct bitmask *bmp = numa_allocate_nodemask();
+	numa_bitmask_setbit(bmp, node);
+	__numa_set_preferred(bmp);
 	numa_bitmask_free(bmp);
+}
+
+int numa_has_preferred_many(void)
+{
+	return has_preferred_many;
+}
+
+void numa_set_preferred_many(struct bitmask *bitmask)
+{
+	int first_node = 0;
+
+	if (!has_preferred_many) {
+		numa_warn(W_nodeparse,
+			"Unable to handle MANY preferred nodes. Falling back to first node\n");
+		first_node = numa_find_first(bitmask);
+		numa_set_preferred(first_node);
+		return;
+	}
+	setpol(MPOL_PREFERRED_MANY, bitmask);
+}
+
+struct bitmask *numa_preferred_many()
+{
+	return __numa_preferred();
 }
 
 void numa_set_localalloc(void)
 {
-	setpol(MPOL_DEFAULT, numa_no_nodes_ptr);
+	setpol(MPOL_LOCAL, numa_no_nodes_ptr);
 }
 
+SYMVER("numa_bind_v1", "numa_bind@libnuma_1.1")
 void numa_bind_v1(const nodemask_t *nodemask)
 {
 	struct bitmask bitmask;
@@ -1761,14 +1893,13 @@ void numa_bind_v1(const nodemask_t *nodemask)
 	numa_run_on_node_mask_v2_int(&bitmask);
 	numa_set_membind_v2_int(&bitmask);
 }
-__asm__(".symver numa_bind_v1,numa_bind@libnuma_1.1");
 
+SYMVER("numa_bind_v2", "numa_bind@@libnuma_1.2")
 void numa_bind_v2(struct bitmask *bmp)
 {
 	numa_run_on_node_mask_v2_int(bmp);
 	numa_set_membind_v2_int(bmp);
 }
-__asm__(".symver numa_bind_v2,numa_bind@@libnuma_1.2");
 
 void numa_set_strict(int flag)
 {
@@ -1942,6 +2073,7 @@ __numa_parse_cpustring(const char *s, struct bitmask *allowed_cpus_ptr)
 	int conf_cpus = numa_num_configured_cpus();
 	char *end;
 	struct bitmask *mask;
+	int i;
 
 	mask = numa_allocate_cpumask();
 
@@ -1957,7 +2089,6 @@ __numa_parse_cpustring(const char *s, struct bitmask *allowed_cpus_ptr)
 	}
 	do {
 		unsigned long arg;
-		int i;
 
 		if (!strcmp(s,"all")) {
 			copy_bitmask_to_bitmask(allowed_cpus_ptr, mask);
@@ -1979,7 +2110,6 @@ __numa_parse_cpustring(const char *s, struct bitmask *allowed_cpus_ptr)
 		if (*s == '-') {
 			char *end2;
 			unsigned long arg2;
-			int i;
 			arg2 = get_nr(++s, &end2, allowed_cpus_ptr, relative);
 			if (end2 == s) {
 				numa_warn(W_cpuparse, "missing cpu argument %s\n", s);
@@ -2001,7 +2131,6 @@ __numa_parse_cpustring(const char *s, struct bitmask *allowed_cpus_ptr)
 	if (s[-1] != '\0')
 		goto err;
 	if (invert) {
-		int i;
 		for (i = 0; i < conf_cpus; i++) {
 			if (numa_bitmask_isbitset(mask, i))
 				numa_bitmask_clearbit(mask, i);

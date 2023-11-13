@@ -20,23 +20,19 @@
 
 #define _GNU_SOURCE
 #include <getopt.h>
-#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include <stdarg.h>
 #include "numa.h"
-#include "numaif.h"
-#include "numaint.h"
 #include "util.h"
 
-struct option opts[] = {
+static struct option opts[] = {
 	{"help", 0, 0, 'h' },
 	{ 0 }
 };
 
-void usage(void)
+static void usage(void)
 {
 	fprintf(stderr,
 		"usage: migratepages pid from-nodes to-nodes\n"
@@ -46,7 +42,7 @@ void usage(void)
 	exit(1);
 }
 
-void checknuma(void)
+static void checknuma(void)
 {
 	static int numa = -1;
 	if (numa < 0) {
@@ -96,7 +92,6 @@ int main(int argc, char *argv[])
 	}
 
 	rc = numa_migrate_pages(pid, fromnodes, tonodes);
-
 	if (rc < 0) {
 		perror("migrate_pages");
 		return 1;

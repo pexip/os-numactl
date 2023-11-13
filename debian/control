@@ -4,12 +4,8 @@ Priority: optional
 Maintainer: Pexip AS <packaging@pexip.com>
 XSBC-Pexip-Original-Maintainer: Ian Wienand <ianw@debian.org>
 XSBC-Pexip-Original-Uploaders: Al Stone <ahs3@debian.org>
-Standards-Version: 3.9.8
-Build-Depends: cdbs,
- autotools-dev,
- dh-autoreconf,
- debhelper,
- dh-buildinfo, dh-autoreconf, debhelper (>= 9.20160114~)
+Standards-Version: 4.5.1
+Build-Depends: debhelper-compat (= 13)
 Homepage: https://github.com/numactl/numactl
 Vcs-Browser: https://salsa.debian.org/debian/numactl
 Vcs-Git: https://salsa.debian.org/debian/numactl.git
@@ -18,7 +14,7 @@ XS-Pexip-Upstream: http://deb.debian.org/debian/ bookworm
 Package: numactl
 Multi-Arch: foreign
 Architecture: linux-any
-Depends: ${shlibs:Depends}, ${misc:Depends}, libnuma1 (>= 2.0.1)
+Depends: ${shlibs:Depends}, ${misc:Depends}, libnuma1
 Description: NUMA scheduling and memory placement tool
  numactl runs processes with a specific NUMA (Non-Uniform Memory
  Architecture) scheduling or memory placement policy.  In addition it
@@ -26,7 +22,6 @@ Description: NUMA scheduling and memory placement tool
 
 Package: libnuma1
 Section: libs
-Priority: optional
 Multi-Arch: same
 Pre-Depends: ${misc:Pre-Depends}
 Depends: ${misc:Depends}, ${shlibs:Depends}
@@ -37,7 +32,6 @@ Description: Libraries for controlling NUMA policy
 
 Package: libnuma-dev
 Section: libdevel
-Priority: optional
 Multi-Arch: same
 Depends: ${misc:Depends}, libnuma1 (= ${binary:Version}), libc6-dev | libc-dev
 Architecture: linux-any

@@ -23,11 +23,15 @@ extern long move_pages(int pid, unsigned long count,
 
 /* Policies */
 #define MPOL_DEFAULT     0
-#define MPOL_PREFERRED    1
+#define MPOL_PREFERRED   1
 #define MPOL_BIND        2
 #define MPOL_INTERLEAVE  3
+#define MPOL_LOCAL       4
+#define MPOL_PREFERRED_MANY   5
+#define MPOL_MAX         6
 
-#define MPOL_MAX MPOL_INTERLEAVE
+/* Flags for set_mempolicy, specified in mode */
+#define MPOL_F_NUMA_BALANCING	(1 << 13) /* Optimize with NUMA balancing if possible */
 
 /* Flags for get_mem_policy */
 #define MPOL_F_NODE    (1<<0)   /* return next il node or node of address */

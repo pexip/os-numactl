@@ -34,16 +34,18 @@
 
 int exitcode;
 
-struct option opts[] = {
+static struct option opts[] = {
 	{"all", 0, 0, 'a'},
 	{"interleave", 1, 0, 'i' },
 	{"preferred", 1, 0, 'p' },
+	{"preferred-many", 1, 0, 'P' },
 	{"cpubind", 1, 0, 'c' },
 	{"cpunodebind", 1, 0, 'N' },
 	{"physcpubind", 1, 0, 'C' },
 	{"membind", 1, 0, 'm'},
 	{"show", 0, 0, 's' },
 	{"localalloc", 0,0, 'l'},
+	{"balancing", 0, 0, 'b'},
 	{"hardware", 0,0,'H' },
 
 	{"shm", 1, 0, 'S'},
@@ -61,20 +63,22 @@ struct option opts[] = {
 	{ 0 }
 };
 
-void usage(void)
+static void usage(void)
 {
 	fprintf(stderr,
-		"usage: numactl [--all | -a] [--interleave= | -i <nodes>] [--preferred= | -p <node>]\n"
+		"usage: numactl [--all | -a] [--balancing | -b] [--interleave= | -i <nodes>]\n"
+		"		[--preferred= | -p <node>] [--preferred-many= | -P <nodes>]\n"
 		"               [--physcpubind= | -C <cpus>] [--cpunodebind= | -N <nodes>]\n"
 		"               [--membind= | -m <nodes>] [--localalloc | -l] command args ...\n"
+		"               [--localalloc | -l] command args ...\n"
 		"       numactl [--show | -s]\n"
 		"       numactl [--hardware | -H]\n"
-		"       numactl [--length | -l <length>] [--offset | -o <offset>] [--shmmode | -M <shmmode>]\n"
+		"       numactl [--length | -L <length>] [--offset | -o <offset>] [--shmmode | -M <shmmode>]\n"
 		"               [--strict | -t]\n"
 		"               [--shmid | -I <id>] --shm | -S <shmkeyfile>\n"
 		"               [--shmid | -I <id>] --file | -f <tmpfsfile>\n"
 		"               [--huge | -u] [--touch | -T] \n"
-		"               memory policy | --dump | -d | --dump-nodes | -D\n"
+		"               memory policy [--dump | -d] [--dump-nodes | -D]\n"
 		"\n"
 		"memory policy is --interleave | -i, --preferred | -p, --membind | -m, --localalloc | -l\n"
 		"<nodes> is a comma delimited list of node numbers or A-B ranges or all.\n"
@@ -89,11 +93,13 @@ void usage(void)
 		"all numbers and ranges can be made cpuset-relative with +\n"
 		"the old --cpubind argument is deprecated.\n"
 		"use --cpunodebind or --physcpubind instead\n"
+		"use --balancing | -b to enable Linux kernel NUMA balancing\n"
+		"for the process if it is supported by kernel\n"
 		"<length> can have g (GB), m (MB) or k (KB) suffixes\n");
 	exit(1);
 }
 
-void usage_msg(char *msg, ...)
+static void usage_msg(char *msg, ...)
 {
 	va_list ap;
 	va_start(ap,msg);
@@ -101,9 +107,10 @@ void usage_msg(char *msg, ...)
 	vfprintf(stderr, msg, ap);
 	putchar('\n');
 	usage();
+	va_end(ap);
 }
 
-void show_physcpubind(void)
+static void show_physcpubind(void)
 {
 	int ncpus = numa_num_configured_cpus();
 
@@ -124,10 +131,9 @@ void show_physcpubind(void)
 	}
 }
 
-void show(void)
+static void show(void)
 {
-	unsigned long prefnode;
-	struct bitmask *membind, *interleave, *cpubind;
+	struct bitmask *membind, *interleave, *cpubind, *preferred;
 	unsigned long cur;
 	int policy;
 
@@ -139,7 +145,7 @@ void show(void)
 
 	cpubind = numa_get_run_node_mask();
 
-	prefnode = numa_preferred();
+	preferred = numa_preferred_many();
 	interleave = numa_get_interleave_mask();
 	membind = numa_get_membind();
 	cur = numa_get_interleave_node();
@@ -153,11 +159,11 @@ void show(void)
 	printf("preferred node: ");
 	switch (policy) {
 	case MPOL_PREFERRED:
-		if (prefnode != -1) {
-			printf("%ld\n", prefnode);
-			break;
-		}
-		/*FALL THROUGH*/
+		if (numa_bitmask_weight(preferred))
+			printf("%d\n", find_first(preferred));
+		else
+			printf("%d\n", 0);
+		break;
 	case MPOL_DEFAULT:
 		printf("current\n");
 		break;
@@ -166,6 +172,9 @@ void show(void)
 		break;
 	case MPOL_BIND:
 		printf("%d\n", find_first(membind));
+		break;
+	case MPOL_PREFERRED_MANY:
+		printf("%ld (preferred-many)\n",cur);
 		break;
 	}
 	if (policy == MPOL_INTERLEAVE) {
@@ -176,9 +185,10 @@ void show(void)
 	printmask("cpubind", cpubind);  // for compatibility
 	printmask("nodebind", cpubind);
 	printmask("membind", membind);
+	printmask("preferred", preferred);
 }
 
-char *fmt_mem(unsigned long long mem, char *buf)
+static char *fmt_mem(unsigned long long mem, char *buf)
 {
 	if (mem == -1L)
 		sprintf(buf, "<not available>");
@@ -219,7 +229,7 @@ static void print_distances(int maxnode)
 	}
 }
 
-void print_node_cpus(int node)
+static void print_node_cpus(int node)
 {
 	int i, err;
 	struct bitmask *cpus;
@@ -234,7 +244,7 @@ void print_node_cpus(int node)
 	putchar('\n');
 }
 
-void hardware(void)
+static void hardware(void)
 {
 	int i;
 	int numnodes=0;
@@ -298,7 +308,7 @@ void hardware(void)
 	print_distances(maxnode);
 }
 
-void checkerror(char *s)
+static void checkerror(char *s)
 {
 	if (errno) {
 		perror(s);
@@ -306,7 +316,7 @@ void checkerror(char *s)
 	}
 }
 
-void checknuma(void)
+static void checknuma(void)
 {
 	static int numa = -1;
 	if (numa < 0) {
@@ -318,60 +328,56 @@ void checknuma(void)
 
 int set_policy = -1;
 
-void setpolicy(int pol)
+static inline void setpolicy(int pol)
 {
 	if (set_policy != -1)
 		usage_msg("Conflicting policies");
 	set_policy = pol;
 }
 
-void nopolicy(void)
+static inline void nopolicy(void)
 {
 	if (set_policy >= 0)
 		usage_msg("specify policy after --shm/--file");
 }
 
-int did_cpubind = 0;
-int did_strict = 0;
-int do_shm = 0;
-int do_dump = 0;
-int shmattached = 0;
-int did_node_cpu_parse = 0;
-int parse_all = 0;
-char *shmoption;
 
-void check_cpubind(int flag)
+static int shmattached = 0;
+static int did_node_cpu_parse = 0;
+static char *shmoption;
+
+static inline void check_cpubind(int flag)
 {
 	if (flag)
 		usage_msg("cannot do --cpubind on shared memory\n");
 }
 
-void noshm(char *opt)
+static inline void noshm(char *opt)
 {
 	if (shmattached)
 		usage_msg("%s must be before shared memory specification", opt);
 	shmoption = opt;
 }
 
-void dontshm(char *opt)
+static inline void dontshm(char *opt)
 {
 	if (shmoption)
 		usage_msg("%s shm option is not allowed before %s", shmoption, opt);
 }
 
-void needshm(char *opt)
+static inline void needshm(char *opt)
 {
 	if (!shmattached)
 		usage_msg("%s must be after shared memory specification", opt);
 }
 
-void check_all_parse(int flag)
+static inline void check_all_parse(int flag)
 {
 	if (did_node_cpu_parse)
 		usage_msg("--all/-a option must be before all cpu/node specifications");
 }
 
-void get_short_opts(struct option *o, char *s)
+static void get_short_opts(struct option *o, char *s)
 {
 	*s++ = '+';
 	while (o->name) {
@@ -385,7 +391,7 @@ void get_short_opts(struct option *o, char *s)
 	*s = '\0';
 }
 
-void check_shmbeyond(char *msg)
+static void check_shmbeyond(char *msg)
 {
 	if (shmoffset >= shmlen) {
 		fprintf(stderr,
@@ -415,11 +421,17 @@ static struct bitmask *numactl_parse_nodestring(char *s, int flag)
 
 int main(int ac, char **av)
 {
-	int c, i, nnodes=0;
+	int c;
 	long node=-1;
 	char *end;
 	char shortopts[array_len(opts)*2 + 1];
 	struct bitmask *mask = NULL;
+	int did_cpubind = 0;
+	int did_strict = 0;
+	int do_shm = 0;
+	int do_dump = 0;
+	int parse_all = 0;
+	int numa_balancing = 0;
 
 	get_short_opts(opts,shortopts);
 	while ((c = getopt_long(ac, av, shortopts, opts, NULL)) != -1) {
@@ -431,6 +443,10 @@ int main(int ac, char **av)
 			nopolicy();
 			hardware();
 			exit(0);
+		case 'b': /* --balancing  */
+			nopolicy();
+			numa_balancing = 1;
+			break;
 		case 'i': /* --interleave */
 			checknuma();
 			if (parse_all)
@@ -488,7 +504,7 @@ int main(int ac, char **av)
 			did_node_cpu_parse = 1;
 			numa_sched_setaffinity(0, cpubuf);
 			checkerror("sched_setaffinity");
-			free(cpubuf);
+			numa_bitmask_free(cpubuf);
 			break;
 		}
 		case 'm': /* --membind */
@@ -507,15 +523,19 @@ int main(int ac, char **av)
 			numa_set_bind_policy(1);
 			if (shmfd >= 0) {
 				numa_tonodemask_memory(shmptr, shmlen, mask);
+			} else if (numa_balancing) {
+				numa_set_membind_balancing(mask);
 			} else {
 				numa_set_membind(mask);
 			}
 			numa_set_bind_policy(0);
 			checkerror("setting membind");
 			break;
+		case 'P': /* --preferred-many */
+			if (!numa_has_preferred_many())
+				complain("preferred-many requested without kernel support");
 		case 'p': /* --preferred */
 			checknuma();
-			setpolicy(MPOL_PREFERRED);
 			if (parse_all)
 				mask = numactl_parse_nodestring(optarg, ALL);
 			else
@@ -524,27 +544,26 @@ int main(int ac, char **av)
 				printf ("<%s> is invalid\n", optarg);
 				usage();
 			}
-			for (i=0; i<mask->size; i++) {
-				if (numa_bitmask_isbitset(mask, i)) {
-					node = i;
-					nnodes++;
-				}
-			}
-			if (nnodes != 1)
-				usage();
-			numa_bitmask_free(mask);
 			errno = 0;
 			did_node_cpu_parse = 1;
 			numa_set_bind_policy(0);
-			if (shmfd >= 0)
+			if (shmfd >= 0) {
 				numa_tonode_memory(shmptr, shmlen, node);
-			else
-				numa_set_preferred(node);
+			} else if (c == 'p') {
+				if (numa_bitmask_weight(mask) != 1)
+					usage();
+
+				setpolicy(MPOL_PREFERRED);
+				numa_set_preferred(find_first(mask));
+			} else {
+				setpolicy(MPOL_PREFERRED_MANY);
+				numa_set_preferred_many(mask);
+			}
 			checkerror("setting preferred node");
 			break;
 		case 'l': /* --local */
 			checknuma();
-			setpolicy(MPOL_DEFAULT);
+			setpolicy(MPOL_LOCAL);
 			errno = 0;
 			if (shmfd >= 0)
 				numa_setlocal_memory(shmptr, shmlen);
@@ -634,6 +653,8 @@ int main(int ac, char **av)
 			usage();
 		}
 	}
+
+	numa_bitmask_free(mask);
 
 	av += optind;
 	ac -= optind;

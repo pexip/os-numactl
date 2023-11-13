@@ -186,11 +186,24 @@ static inline void numa_free_nodemask(struct bitmask *b)
 /* Some node to preferably allocate memory from for task. */
 void numa_set_preferred(int node);
 
+/* Returns whether or not the platform supports MPOL_PREFERRED_MANY */
+int numa_has_preferred_many(void);
+
+/* Set of nodes to preferably allocate memory from for task. */
+void numa_set_preferred_many(struct bitmask *bitmask);
+
+/* Return preferred nodes */
+struct bitmask *numa_preferred_many(void);
+
 /* Set local memory allocation policy for task */
 void numa_set_localalloc(void);
 
 /* Only allocate memory from the nodes set in mask. 0 to turn off */
 void numa_set_membind(struct bitmask *nodemask);
+
+/* Only allocate memory from the nodes set in mask. Optimize page
+   placement with Linux kernel NUMA balancing if possible. 0 to turn off */
+void numa_set_membind_balancing(struct bitmask *bmp);
 
 /* Return current membind */
 struct bitmask *numa_get_membind(void);
@@ -221,7 +234,7 @@ void numa_free(void *mem, size_t size);
 /* Low level functions, primarily for shared memory. All memory
    processed by these must not be touched yet */
 
-/* Interleave an memory area. */
+/* Interleave a memory area. */
 void numa_interleave_memory(void *mem, size_t size, struct bitmask *mask);
 
 /* Allocate a memory area on a specific node. */
@@ -252,27 +265,27 @@ void numa_set_bind_policy(int strict);
 void numa_set_strict(int flag);
 
 /* maximum nodes (size of kernel nodemask_t) */
-int numa_num_possible_nodes();
+int numa_num_possible_nodes(void);
 
 /* maximum cpus (size of kernel cpumask_t) */
-int numa_num_possible_cpus();
+int numa_num_possible_cpus(void);
 
 /* nodes in the system */
-int numa_num_configured_nodes();
+int numa_num_configured_nodes(void);
 
 /* maximum cpus */
-int numa_num_configured_cpus();
+int numa_num_configured_cpus(void);
 
 /* maximum cpus allowed to current task */
-int numa_num_task_cpus();
-int numa_num_thread_cpus(); /* backward compatibility */
+int numa_num_task_cpus(void);
+int numa_num_thread_cpus(void); /* backward compatibility */
 
 /* maximum nodes allowed to current task */
-int numa_num_task_nodes();
-int numa_num_thread_nodes(); /* backward compatibility */
+int numa_num_task_nodes(void);
+int numa_num_thread_nodes(void); /* backward compatibility */
 
 /* allocate a bitmask the size of the kernel cpumask_t */
-struct bitmask *numa_allocate_cpumask();
+struct bitmask *numa_allocate_cpumask(void);
 
 static inline void numa_free_cpumask(struct bitmask *b)
 {
@@ -281,6 +294,8 @@ static inline void numa_free_cpumask(struct bitmask *b)
 
 /* Convert node to CPU mask. -1/errno on failure, otherwise 0. */
 int numa_node_to_cpus(int, struct bitmask *);
+
+void numa_node_to_cpu_update(void);
 
 /* report the node of the specified cpu. -1/errno on invalid cpu. */
 int numa_node_of_cpu(int cpu);
@@ -341,7 +356,7 @@ static inline void numa_set_interleave_mask_compat(nodemask_t *nodemask)
 	numa_set_interleave_mask(&tmp);
 }
 
-static inline nodemask_t numa_get_interleave_mask_compat()
+static inline nodemask_t numa_get_interleave_mask_compat(void)
 {
 	struct bitmask *tp;
 	nodemask_t mask;
@@ -371,7 +386,7 @@ static inline void numa_set_membind_compat(nodemask_t *mask)
 	numa_set_membind(&tmp);
 }
 
-static inline nodemask_t numa_get_membind_compat()
+static inline nodemask_t numa_get_membind_compat(void)
 {
 	struct bitmask *tp;
 	nodemask_t mask;
@@ -401,7 +416,7 @@ static inline int numa_run_on_node_mask_compat(const nodemask_t *mask)
 	return numa_run_on_node_mask(&tmp);
 }
 
-static inline nodemask_t numa_get_run_node_mask_compat()
+static inline nodemask_t numa_get_run_node_mask_compat(void)
 {
 	struct bitmask *tp;
 	nodemask_t mask;
