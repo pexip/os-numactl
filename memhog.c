@@ -15,10 +15,10 @@
    on your Linux system; if not, write to the Free Software Foundation,
    Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA */
 
+#include <fcntl.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <sys/mman.h>
-#include <sys/fcntl.h>
 #include <string.h>
 #include <stdbool.h>
 #include "numa.h"
@@ -38,7 +38,7 @@ enum {
 
 static void usage(void)
 {
-	printf("memhog [-fFILE] [-rNUM] size[kmg] [policy [nodeset]]\n");
+	printf("memhog [-fFILE] [-rNUM] [-H] size[kmg] [policy [nodeset]]\n");
 	printf("-f mmap is backed by FILE\n");
 	printf("-rNUM repeat memset NUM times\n");
 	printf("-H disable transparent hugepages\n");

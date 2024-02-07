@@ -33,6 +33,12 @@
 #define ALL 1
 
 int exitcode;
+int cpu_compress;
+
+enum {
+	CPU_COMPRESS = 300,
+	OPT_VERSION,
+};
 
 static struct option opts[] = {
 	{"all", 0, 0, 'a'},
@@ -59,7 +65,9 @@ static struct option opts[] = {
 	{"shmid", 1, 0, 'I'},
 	{"huge", 0, 0, 'u'},
 	{"touch", 0, 0, 'T'},
+        {"cpu-compress", 0, 0, CPU_COMPRESS },
 	{"verify", 0, 0, 'V'}, /* undocumented - for debugging */
+	{"version", 0, 0, OPT_VERSION },
 	{ 0 }
 };
 
@@ -72,7 +80,8 @@ static void usage(void)
 		"               [--membind= | -m <nodes>] [--localalloc | -l] command args ...\n"
 		"               [--localalloc | -l] command args ...\n"
 		"       numactl [--show | -s]\n"
-		"       numactl [--hardware | -H]\n"
+		"       numactl [--hardware | -H] [--cpu-compress]\n"
+		"       numactl [--version]\n"
 		"       numactl [--length | -L <length>] [--offset | -o <offset>] [--shmmode | -M <shmmode>]\n"
 		"               [--strict | -t]\n"
 		"               [--shmid | -I <id>] --shm | -S <shmkeyfile>\n"
@@ -231,17 +240,55 @@ static void print_distances(int maxnode)
 
 static void print_node_cpus(int node)
 {
-	int i, err;
-	struct bitmask *cpus;
+        int i = 0, err, start, segment = 0, count = 0;
+        struct bitmask *cpus;
 
-	cpus = numa_allocate_cpumask();
-	err = numa_node_to_cpus(node, cpus);
-	if (err >= 0) {
-		for (i = 0; i < cpus->size; i++)
-			if (numa_bitmask_isbitset(cpus, i))
-				printf(" %d", i);
-	}
-	putchar('\n');
+        cpus = numa_allocate_cpumask();
+        err = numa_node_to_cpus(node, cpus);
+        if (err < 0) {
+                goto out;
+        }
+
+        while (i < cpus->size) {
+                if (!cpu_compress) {
+                        if (numa_bitmask_isbitset(cpus, i))
+                        printf(" %d", i);
+                        i++;
+                        continue;
+                }
+
+                start = -1;
+
+                // Find the start and end of a range of available CPUs.
+                while (i < cpus->size && numa_bitmask_isbitset(cpus, i)) {
+                        if (start == -1) start = i;
+                        i++;
+                }
+                if (start == -1) {
+                        i++;
+                        continue;
+                }
+                if (segment) {
+                        printf(",");
+                }
+
+                int end = i - 1;
+                count += (end - start) + 1;
+                if (start == end) {
+                        printf(" %d", start);
+                } else {
+                        printf(" %d-%d", start, end);
+                }
+                segment++;
+        }
+
+        if (!cpu_compress)
+                printf("\n");
+        else
+                printf(" (%d)\n", count);
+
+out:
+        numa_free_cpumask(cpus);
 }
 
 static void hardware(void)
@@ -422,7 +469,6 @@ static struct bitmask *numactl_parse_nodestring(char *s, int flag)
 int main(int ac, char **av)
 {
 	int c;
-	long node=-1;
 	char *end;
 	char shortopts[array_len(opts)*2 + 1];
 	struct bitmask *mask = NULL;
@@ -432,6 +478,7 @@ int main(int ac, char **av)
 	int do_dump = 0;
 	int parse_all = 0;
 	int numa_balancing = 0;
+	int do_hardware = 0;
 
 	get_short_opts(opts,shortopts);
 	while ((c = getopt_long(ac, av, shortopts, opts, NULL)) != -1) {
@@ -441,8 +488,8 @@ int main(int ac, char **av)
 			exit(0);
 		case 'H': /* --hardware */
 			nopolicy();
-			hardware();
-			exit(0);
+			do_hardware = 1;
+			break;
 		case 'b': /* --balancing  */
 			nopolicy();
 			numa_balancing = 1;
@@ -548,7 +595,13 @@ int main(int ac, char **av)
 			did_node_cpu_parse = 1;
 			numa_set_bind_policy(0);
 			if (shmfd >= 0) {
-				numa_tonode_memory(shmptr, shmlen, node);
+				numa_tonode_memory(shmptr, shmlen, find_first(mask));
+				/* Correspond to numa_set_bind_policy function */
+				if (numa_has_preferred_many()) {
+					setpolicy(MPOL_PREFERRED_MANY);
+				} else {
+					setpolicy(MPOL_PREFERRED);
+				}
 			} else if (c == 'p') {
 				if (numa_bitmask_weight(mask) != 1)
 					usage();
@@ -649,9 +702,21 @@ int main(int ac, char **av)
 			check_all_parse(did_node_cpu_parse);
 			parse_all = 1;
 			break;
+		case CPU_COMPRESS:
+			cpu_compress = 1;
+			break;
+		case OPT_VERSION:
+			nopolicy();
+			printf("%s\n", VERSION);
+			exit(0);
 		default:
 			usage();
 		}
+	}
+
+	if (do_hardware) {
+		hardware();
+		exit(0);
 	}
 
 	numa_bitmask_free(mask);
