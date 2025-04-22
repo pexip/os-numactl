@@ -11,6 +11,7 @@ libnuma.so.1 libnuma1 #MINVER#
  libnuma_1.5@libnuma_1.5 2.0.15
  libnuma_1.6@libnuma_1.6 2.0.15
  libnuma_1.7@libnuma_1.7 2.0.18
+ libnuma_2.1@libnuma_2.1 2.0.19
  mbind@libnuma_1.1 2.0.11
  migrate_pages@libnuma_1.2 2.0.11
  move_pages@libnuma_1.2 2.0.11
@@ -106,6 +107,7 @@ libnuma.so.1 libnuma1 #MINVER#
  numa_set_preferred@libnuma_1.1 2.0.11
  numa_set_preferred_many@libnuma_1.6 2.0.15
  numa_set_strict@libnuma_1.1 2.0.11
+ numa_set_weighted_interleave_mask@libnuma_2.1 2.0.19
  numa_setlocal_memory@libnuma_1.1 2.0.11
  numa_tonode_memory@libnuma_1.1 2.0.11
  numa_tonodemask_memory@libnuma_1.1 2.0.11

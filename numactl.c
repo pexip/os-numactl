@@ -43,6 +43,7 @@ enum {
 static struct option opts[] = {
 	{"all", 0, 0, 'a'},
 	{"interleave", 1, 0, 'i' },
+	{"weighted-interleave", 1, 0, 'w' },
 	{"preferred", 1, 0, 'p' },
 	{"preferred-many", 1, 0, 'P' },
 	{"cpubind", 1, 0, 'c' },
@@ -74,8 +75,9 @@ static struct option opts[] = {
 static void usage(void)
 {
 	fprintf(stderr,
-		"usage: numactl [--all | -a] [--balancing | -b] [--interleave= | -i <nodes>]\n"
-		"		[--preferred= | -p <node>] [--preferred-many= | -P <nodes>]\n"
+		"usage: numactl [--all | -a] [--balancing | -b]\n"
+		"               [--interleave= | -i <nodes>] [--weighted-interleave= | -w <nodes>]\n"
+		"               [--preferred= | -p <node>] [--preferred-many= | -P <nodes>]\n"
 		"               [--physcpubind= | -C <cpus>] [--cpunodebind= | -N <nodes>]\n"
 		"               [--membind= | -m <nodes>] [--localalloc | -l] command args ...\n"
 		"               [--localalloc | -l] command args ...\n"
@@ -89,7 +91,8 @@ static void usage(void)
 		"               [--huge | -u] [--touch | -T] \n"
 		"               memory policy [--dump | -d] [--dump-nodes | -D]\n"
 		"\n"
-		"memory policy is --interleave | -i, --preferred | -p, --membind | -m, --localalloc | -l\n"
+		"memory policy is --preferred | -p, --membind | -m, --localalloc | -l,\n"
+		"                 --interleave | -i, --weighted-interleave | -w\n"
 		"<nodes> is a comma delimited list of node numbers or A-B ranges or all.\n"
 		"Instead of a number a node can also be:\n"
 		"  netdev:DEV the node connected to network device DEV\n"
@@ -195,6 +198,7 @@ static void show(void)
 	printmask("nodebind", cpubind);
 	printmask("membind", membind);
 	printmask("preferred", preferred);
+	numa_bitmask_free(preferred);
 }
 
 static char *fmt_mem(unsigned long long mem, char *buf)
@@ -221,19 +225,19 @@ static void print_distances(int maxnode)
 		return;
 	}
 	printf("node distances:\n");
-	printf("node ");
+	printf("node  ");
 	for (i = 0; i <= maxnode; i++)
 		if (numa_bitmask_isbitset(numa_nodes_ptr, i))
-			printf("% 3d ", i);
+			printf("% 4d ", i);
 	printf("\n");
 	for (i = 0; i <= maxnode; i++) {
 		if (!numa_bitmask_isbitset(numa_nodes_ptr, i))
 			continue;
-		printf("% 3d: ", i);
+		printf("% 4d: ", i);
 		for (k = 0; k <= maxnode; k++)
 			if (numa_bitmask_isbitset(numa_nodes_ptr, i) &&
 			    numa_bitmask_isbitset(numa_nodes_ptr, k))
-				printf("% 3d ", numa_distance(i,k));
+				printf("% 4d ", numa_distance(i,k));
 		printf("\n");
 	}
 }
@@ -479,6 +483,7 @@ int main(int ac, char **av)
 	int parse_all = 0;
 	int numa_balancing = 0;
 	int do_hardware = 0;
+	int weighted_interleave = 0;
 
 	get_short_opts(opts,shortopts);
 	while ((c = getopt_long(ac, av, shortopts, opts, NULL)) != -1) {
@@ -494,6 +499,9 @@ int main(int ac, char **av)
 			nopolicy();
 			numa_balancing = 1;
 			break;
+		case 'w': /* --weighted-interleave */
+			weighted_interleave = 1;
+			/* fall-through - logic is the same as interleave */
 		case 'i': /* --interleave */
 			checknuma();
 			if (parse_all)
@@ -507,11 +515,18 @@ int main(int ac, char **av)
 
 			errno = 0;
 			did_node_cpu_parse = 1;
-			setpolicy(MPOL_INTERLEAVE);
+			if (weighted_interleave)
+				setpolicy(MPOL_WEIGHTED_INTERLEAVE);
+			else
+				setpolicy(MPOL_INTERLEAVE);
 			if (shmfd >= 0)
 				numa_interleave_memory(shmptr, shmlen, mask);
-			else
-				numa_set_interleave_mask(mask);
+			else {
+				if (weighted_interleave)
+					numa_set_weighted_interleave_mask(mask);
+				else
+					numa_set_interleave_mask(mask);
+			}
 			checkerror("setting interleave mask");
 			break;
 		case 'N': /* --cpunodebind */
