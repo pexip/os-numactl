@@ -1,3 +1,4 @@
+'\" t
 .TH MEMHOG 8 "2003,2004" "SuSE Labs" "Linux Administrator's Manual"
 .SH NAME
 memhog \- Allocates memory with policy for testing
@@ -52,7 +53,7 @@ thread is running on)
 # Allocate a 1G region, mmap backed by memhog.mmap file, membind to node 0, repeat test 6 times
 memhog -r6 1G --membind 0 -fmemhog.mmap
 .TP
-# Allocate a 1G region, iterleave across nodes 0,1,2,3, repeat test 4 times
+# Allocate a 1G region, interleave across nodes 0,1,2,3, repeat test 4 times
 memhog -r4 1G --interleave 0-3
 .TP
 # Allocate a 1G region, (implicit) default policy, repeat test 8 times

@@ -16,11 +16,12 @@ dist_man_MANS = move_pages.2 numa.3 numactl.8 numastat.8 migratepages.8 migspeed
 
 EXTRA_DIST = README.md INSTALL.md LICENSE.GPL2 LICENSE.LGPL2.1
 
-numactl_SOURCES = numactl.c util.c shm.c shm.h
+numactl_SOURCES = numactl.c util.c shm.c shm.h VERSION
 numactl_LDADD = libnuma.la
+numactl_CFLAGS = $(AM_CFLAGS) -DVERSION=\"$(shell cat ${srcdir}/VERSION)\"
 
 numastat_SOURCES = numastat.c
-numastat_CFLAGS = $(AM_CFLAGS) -std=gnu99
+numastat_CFLAGS = $(AM_CFLAGS) -std=gnu99 -DVERSION=\"$(shell cat ${srcdir}/VERSION)\"
 
 numademo_SOURCES = numademo.c stream_lib.c stream_lib.h mt.c mt.h clearcache.c util.c clearcache.h
 numademo_CPPFLAGS = $(AM_CPPFLAGS) -DHAVE_STREAM_LIB -DHAVE_MT -DHAVE_CLEAR_CACHE
@@ -34,16 +35,13 @@ migratepages_SOURCES = migratepages.c util.c
 migratepages_LDADD = libnuma.la
 
 migspeed_SOURCES = migspeed.c util.c
-migspeed_LDADD = libnuma.la -lrt
+migspeed_LDADD = libnuma.la 
 
 memhog_SOURCES = memhog.c util.c
 memhog_LDADD = libnuma.la
 
 libnuma_la_SOURCES = libnuma.c syscall.c distance.c affinity.c affinity.h sysfs.c sysfs.h rtnetlink.c rtnetlink.h versions.ldscript
 libnuma_la_LDFLAGS = -version-info 1:0:0 -Wl,--version-script,$(srcdir)/versions.ldscript -Wl,-init,numa_init -Wl,-fini,numa_fini
-if RISCV64
-libnuma_la_LDFLAGS += -latomic
-endif
 
 check_PROGRAMS = \
 	test/distance \

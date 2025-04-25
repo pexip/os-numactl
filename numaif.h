@@ -21,6 +21,9 @@ extern long migrate_pages(int pid, unsigned long maxnode,
 extern long move_pages(int pid, unsigned long count,
 		void **pages, const int *nodes, int *status, int flags);
 
+extern int set_mempolicy_home_node(void *start, unsigned long len,
+		int home_node, int flag);
+
 /* Policies */
 #define MPOL_DEFAULT     0
 #define MPOL_PREFERRED   1
@@ -32,7 +35,9 @@ extern long move_pages(int pid, unsigned long count,
 
 /* Flags for set_mempolicy, specified in mode */
 #define MPOL_F_NUMA_BALANCING	(1 << 13) /* Optimize with NUMA balancing if possible */
-
+#define MPOL_F_RELATIVE_NODES (1 << 14)
+#define MPOL_F_STATIC_NODES (1 << 15)
+	
 /* Flags for get_mem_policy */
 #define MPOL_F_NODE    (1<<0)   /* return next il node or node of address */
 				/* Warning: MPOL_F_NODE is unsupported and
