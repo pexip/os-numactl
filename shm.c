@@ -24,8 +24,8 @@
 #include <sys/mman.h>
 #include <sys/ipc.h>
 #include <sys/shm.h>
-#include <sys/fcntl.h>
 #include <sys/stat.h>
+#include <fcntl.h>
 #include <stdarg.h>
 #include <errno.h>
 #include <unistd.h>
@@ -135,7 +135,7 @@ void attach_sysvshm(char *name, char *opt)
 /* Attach a shared memory file. */
 void attach_shared(char *name, char *opt)
 {
-	struct stat64 st;
+	struct stat st;
 
 	shmfd = open(name, O_RDWR);
 	if (shmfd < 0) {
@@ -146,14 +146,14 @@ void attach_shared(char *name, char *opt)
 		if (shmfd < 0)
 			nerror("cannot create file %s", name);
 	}
-	if (fstat64(shmfd, &st) < 0)
+	if (fstat(shmfd, &st) < 0)
 		err("shm stat");
 	/* the file size must be larger than mmap shmlen + shmoffset, otherwise SIGBUS
 	 * will be caused when we access memory, because mmaped memory is no longer in
 	 * the range of the file laster.
 	 */
 	if ((shmlen + shmoffset) > st.st_size) {
-		if (ftruncate64(shmfd, shmlen + shmoffset) < 0) {
+		if (ftruncate(shmfd, shmlen + shmoffset) < 0) {
 			/* XXX: we could do it by hand, but it would it
 			   would be impossible to apply policy then.
 			   need to fix that in the kernel. */
@@ -168,7 +168,7 @@ void attach_shared(char *name, char *opt)
 
 	/* RED-PEN For shmlen > address space may need to map in pieces.
 	   Left for some poor 32bit soul. */
-	shmptr = mmap64(NULL, shmlen, PROT_READ | PROT_WRITE, MAP_SHARED, shmfd, shmoffset);
+	shmptr = mmap(NULL, shmlen, PROT_READ | PROT_WRITE, MAP_SHARED, shmfd, shmoffset);
 	if (shmptr == (char*)-1)
 		err("shm mmap");
 }
@@ -205,11 +205,12 @@ void dump_shm(void)
 		if (get_mempolicy(&pol, nodes->maskp, nodes->size, c+shmptr,
 						MPOL_F_ADDR) < 0)
 			err("get_mempolicy on shm");
-		if (pol == prevpol)
+		if (pol == prevpol && numa_bitmask_equal(prevnodes, nodes))
 			continue;
 		if (prevpol != -1)
 			dumppol(start, c, prevpol, prevnodes);
-		prevnodes = nodes;
+
+		copy_bitmask_to_bitmask(nodes, prevnodes);
 		prevpol = pol;
 		start = c;
 	}

@@ -24,12 +24,8 @@ written by Andi Kleen to display the /sys/devices/system/node/node<N>/numastat
 statistics. In 2012, numastat was rewritten as a C program by Red Hat to
 display per-node memory data for applications and the system in general,
 while also remaining strictly compatible by default with the original numastat.
-A copy of the original numastat perl script is included for reference at the
-end of this file.
 
 */
-
-// Compile with: gcc -O -std=gnu99 -Wall -o numastat numastat.c
 
 #define __USE_MISC
 #include <ctype.h>
@@ -41,6 +37,9 @@ end of this file.
 #include <string.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <dirent.h>
+#include <sys/stat.h>
+#include <errno.h>
 
 #define STRINGIZE(s) #s
 #define STRINGIFY(s) STRINGIZE(s)
@@ -50,12 +49,18 @@ end of this file.
 
 #define BUF_SIZE 2048
 #define SMALL_BUF_SIZE 128
+#define PATH_LEN 128
+#define DNAME_LEN 64
 
 // Don't assume nodes are sequential or contiguous.
 // Need to discover and map node numbers.
 
 int *node_ix_map = NULL;
 char **node_header;
+
+//Vma Kernel Pagesize string
+#define VM_PGSZ_STR "kernelpagesize_kB="
+#define VM_PGSZ_STRLEN 18
 
 // Structure to organize memory info from /proc/<PID>/numa_maps for a specific
 // process, or from /sys/devices/system/node/node?/meminfo for system-wide
@@ -94,39 +99,44 @@ static meminfo_t system_meminfo[] = {
         {  0, "MemTotal", "MemTotal" },
         {  1, "MemFree", "MemFree" },
         {  2, "MemUsed", "MemUsed" },
-        {  3, "HighTotal", "HighTotal" },
-        {  4, "HighFree", "HighFree" },
-        {  5, "LowTotal", "LowTotal" },
-        {  6, "LowFree", "LowFree" },
-        {  7, "Active", "Active" },
-        {  8, "Inactive", "Inactive" },
-        {  9, "Active(anon)", "Active(anon)" },
-        { 10, "Inactive(anon)", "Inactive(anon)" },
-        { 11, "Active(file)", "Active(file)" },
-        { 12, "Inactive(file)", "Inactive(file)" },
-        { 13, "Unevictable", "Unevictable" },
-        { 14, "Mlocked", "Mlocked" },
-        { 15, "Dirty", "Dirty" },
-        { 16, "Writeback", "Writeback" },
-        { 17, "FilePages", "FilePages" },
-        { 18, "Mapped", "Mapped" },
-        { 19, "AnonPages", "AnonPages" },
-        { 20, "Shmem", "Shmem" },
-        { 21, "KernelStack", "KernelStack" },
-        { 22, "PageTables", "PageTables" },
-        { 23, "NFS_Unstable", "NFS_Unstable" },
-        { 24, "Bounce", "Bounce" },
-        { 25, "WritebackTmp", "WritebackTmp" },
-        { 26, "Slab", "Slab" },
-        { 27, "SReclaimable", "SReclaimable" },
-        { 28, "SUnreclaim", "SUnreclaim" },
-        { 29, "AnonHugePages", "AnonHugePages" },
-        { 30, "ShmemHugePages", "ShmemHugePages" },
-        { 31, "ShmemPmdMapped", "ShmemPmdMapped" },
-        { 32, "HugePages_Total", "HugePages_Total" },
-        { 33, "HugePages_Free", "HugePages_Free" },
-        { 34, "HugePages_Surp", "HugePages_Surp" },
-        { 35, "KReclaimable", "KReclaimable" }
+        {  3, "SwapCached", "SwapCached" },
+        {  4, "HighTotal", "HighTotal" },
+        {  5, "HighFree", "HighFree" },
+        {  6, "LowTotal", "LowTotal" },
+        {  7, "LowFree", "LowFree" },
+        {  8, "Active", "Active" },
+        {  9, "Inactive", "Inactive" },
+        { 10, "Active(anon)", "Active(anon)" },
+        { 11, "Inactive(anon)", "Inactive(anon)" },
+        { 12, "Active(file)", "Active(file)" },
+        { 13, "Inactive(file)", "Inactive(file)" },
+        { 14, "Unevictable", "Unevictable" },
+        { 15, "Mlocked", "Mlocked" },
+        { 16, "Dirty", "Dirty" },
+        { 17, "Writeback", "Writeback" },
+        { 18, "FilePages", "FilePages" },
+        { 19, "Mapped", "Mapped" },
+        { 20, "AnonPages", "AnonPages" },
+        { 21, "Shmem", "Shmem" },
+        { 22, "KernelStack", "KernelStack" },
+        { 23, "ShadowCallStack", "ShadowCallStack" },
+        { 24, "PageTables", "PageTables" },
+        { 25, "SecPageTables", "SecPageTables" },
+        { 26, "NFS_Unstable", "NFS_Unstable" },
+        { 27, "Bounce", "Bounce" },
+        { 28, "WritebackTmp", "WritebackTmp" },
+        { 29, "Slab", "Slab" },
+        { 30, "SReclaimable", "SReclaimable" },
+        { 31, "SUnreclaim", "SUnreclaim" },
+        { 32, "AnonHugePages", "AnonHugePages" },
+        { 33, "ShmemHugePages", "ShmemHugePages" },
+        { 34, "ShmemPmdMapped", "ShmemPmdMapped" },
+        { 35, "FileHugePages", "FileHugePages" },
+        { 36, "FilePmdMapped", "FilePmdMapped" },
+        { 37, "HugePages_Total", "HugePages_Total" },
+        { 38, "HugePages_Free", "HugePages_Free" },
+        { 39, "HugePages_Surp", "HugePages_Surp" },
+        { 40, "KReclaimable", "KReclaimable" }
 };
 
 #define SYSTEM_MEMINFO_ROWS (sizeof(system_meminfo) / sizeof(system_meminfo[0]))
@@ -259,16 +269,6 @@ static inline void set_col_flag(vtab_p table, int col, int flag)
         table->col_flags[col] |= (uint8_t)flag;
 }
 
-static inline void clear_row_flag(vtab_p table, int row, int flag)
-{
-        table->row_flags[row] &= (uint8_t)~flag;
-}
-
-static inline void clear_col_flag(vtab_p table, int col, int flag)
-{
-        table->col_flags[col] &= (uint8_t)~flag;
-}
-
 static inline int test_row_flag(vtab_p table, int row, int flag)
 {
         return ((table->row_flags[row] & (uint8_t)flag) != 0);
@@ -304,18 +304,6 @@ static inline void set_cell_flag(vtab_p table, int row, int col, int flag)
         c_ptr->flags |= (uint32_t)flag;
 }
 
-static inline void clear_cell_flag(vtab_p table, int row, int col, int flag)
-{
-        cell_p c_ptr = GET_CELL_PTR(row, col);
-        c_ptr->flags &= (uint32_t)~flag;
-}
-
-static inline int test_cell_flag(vtab_p table, int row, int col, int flag)
-{
-        cell_p c_ptr = GET_CELL_PTR(row, col);
-        return ((c_ptr->flags & (uint32_t)flag) != 0);
-}
-
 static inline void string_assign(vtab_p table, int row, int col, char *s)
 {
         cell_p c_ptr = GET_CELL_PTR(row, col);
@@ -337,31 +325,11 @@ static inline void double_assign(vtab_p table, int row, int col, double d)
         c_ptr->d = d;
 }
 
-static inline void long_assign(vtab_p table, int row, int col, int64_t l)
-{
-        cell_p c_ptr = GET_CELL_PTR(row, col);
-        c_ptr->type = CELL_TYPE_LONG;
-        c_ptr->l = l;
-}
-
 static inline void double_addto(vtab_p table, int row, int col, double d)
 {
         cell_p c_ptr = GET_CELL_PTR(row, col);
         c_ptr->type = CELL_TYPE_DOUBLE;
         c_ptr->d += d;
-}
-
-static inline void long_addto(vtab_p table, int row, int col, int64_t l)
-{
-        cell_p c_ptr = GET_CELL_PTR(row, col);
-        c_ptr->type = CELL_TYPE_LONG;
-        c_ptr->l += l;
-}
-
-static inline void clear_assign(vtab_p table, int row, int col)
-{
-        cell_p c_ptr = GET_CELL_PTR(row, col);
-        memset(c_ptr, 0, sizeof(cell_t));
 }
 
 static void zero_table_data(vtab_p table, int type)
@@ -704,8 +672,7 @@ static double huge_page_size_in_bytes = 0;
 
 static void display_version_and_exit(void)
 {
-        char *version_string = "20130723";
-        printf("%s version: %s: %s\n", prog_name, version_string, __DATE__);
+        printf("%s\n", VERSION);
         exit(EXIT_SUCCESS);
 }
 
@@ -783,6 +750,89 @@ static char *command_name_for_pid(int pid)
                 fclose(fs);
         }
         return NULL;
+}
+
+/* update hugepages info from /sys/devices/system/node/node$/hugepages/hugepages-$ */
+static double update_hugepages_info(int node_ix, const char *token)
+{
+        char *fname;
+        DIR *d = NULL;
+        struct dirent *dp = NULL;
+        struct stat st;
+        char top_path[64];
+
+        if (!strncmp(token, "HugePages_Total", 15)) {
+                fname = "nr_hugepages";
+        } else if(!strncmp(token, "HugePages_Free", 14)) {
+                fname = "free_hugepages";
+        } else if (!strncmp(token, "HugePages_Surp", 14)) {
+                fname = "surplus_hugepages";
+        } else {
+                return -EINVAL;
+        }
+
+        snprintf(top_path, sizeof(top_path), "/sys/devices/system/node/node%d/hugepages", node_ix);
+
+        if(stat(top_path, &st) < 0 || !S_ISDIR(st.st_mode)) {
+                printf("invalid path: %s\n", top_path);
+                return -ENOENT;
+        }
+
+        if(!(d = opendir(top_path))) {
+                fprintf(stderr, "opendir[%s] error: %s\n", top_path, strerror(errno));
+                return -ENOENT;
+        }
+
+        const char *delimiters = "-";
+        double total = 0;
+        char *huge_dname;
+        char *fpath;
+        char *buf;
+
+        huge_dname = (char *)malloc(DNAME_LEN);
+        fpath = (char *)malloc(PATH_LEN);
+        buf = (char *)malloc(SMALL_BUF_SIZE);
+
+        /* Traversing directories /sys/devices/system/node/node%d/hugepages */
+        while((dp = readdir(d)) != NULL) {
+                if((!strncmp(dp->d_name, ".", 1)) || (!strncmp(dp->d_name, "..", 2)))
+                        continue;
+
+                if ((dp->d_type != DT_DIR) || strncmp(dp->d_name, "hugepages-", 10))
+                        continue;
+
+                /* Get huge pages size from d_name d_name: example hugepages-1048576kB */
+                memset(huge_dname, 0, DNAME_LEN);
+                memcpy(huge_dname, dp->d_name, strlen(dp->d_name));
+
+                /* Example: /sys/devices/system/node/node%d/hugepages/hugepages-1048576kB/nr_hugepages */
+                snprintf(fpath, PATH_LEN, "%s/%s/%s", top_path, huge_dname, fname);
+
+                char *pagesz_str = strtok(huge_dname, delimiters);
+                pagesz_str = strtok(NULL, pagesz_str);
+                memset(strstr(pagesz_str, "kB"), 0, 2);
+                unsigned long hugepage_size = strtol(pagesz_str, NULL, 10);
+                hugepage_size *= KILOBYTE;
+
+                /* Get the number of pages */
+                FILE *fs = fopen(fpath, "r");
+                if (!fs) {
+                        printf("cannot open %s: %s\n", fpath, strerror(errno));
+                        continue;
+                }
+		unsigned long nr_pages = 0;
+                if (fgets(buf, SMALL_BUF_SIZE, fs))
+			nr_pages = strtoul(buf, NULL, 10);
+                fclose(fs);
+
+                total += nr_pages * hugepage_size;
+        }
+        closedir(d);
+        free(huge_dname);
+        free(fpath);
+        free(buf);
+
+        return total;
 }
 
 static void show_info_from_system_file(char *file, meminfo_p meminfo, int meminfo_rows, int tok_offset)
@@ -864,7 +914,14 @@ static void show_info_from_system_file(char *file, meminfo_p meminfo, int meminf
                                         if (tokens < 4) {
                                                 multiplier = page_size_in_bytes;
                                         } else if (!strncmp("HugePages", tok[2], 9)) {
-                                                multiplier = huge_page_size_in_bytes;
+                                                /* update hugepages info more detail from sysfs/hugepages directory */
+                                                double new = update_hugepages_info(node_ix_map[node_ix], tok[2]);
+                                                if (new > 0) {
+                                                        value = new;
+                                                } else {
+                                                        /* fall back old way */
+                                                        multiplier = huge_page_size_in_bytes;
+                                                }
                                         } else if (!strncmp("kB", tok[4], 2)) {
                                                 multiplier = KILOBYTE;
                                         }
@@ -997,6 +1054,12 @@ static void show_process_info(void)
                 // amount.
                 while (fgets(buf, BUF_SIZE, fs)) {
                         int category = PROCESS_PRIVATE_INDEX;	// init category to the catch-all...
+                        double vm_pagesz = 0;
+                        char *pagesz_str = strstr(buf, VM_PGSZ_STR);
+                        if (pagesz_str) {
+                                vm_pagesz = (double)strtol(&pagesz_str[VM_PGSZ_STRLEN], NULL, 10);
+                                vm_pagesz *= KILOBYTE;
+                        }
                         const char *delimiters = " \t\r\n";
                         char *p = strtok(buf, delimiters);
                         while (p) {
@@ -1021,11 +1084,13 @@ static void show_process_info(void)
                                                 exit(EXIT_FAILURE);
                                         }
                                         double value = (double)strtol(&p[1], &p, 10);
-                                        double multiplier = page_size_in_bytes;
-                                        if (category == PROCESS_HUGE_INDEX) {
-                                                multiplier = huge_page_size_in_bytes;
+                                        if (!vm_pagesz) {
+                                                vm_pagesz = page_size_in_bytes;
+                                                if (category == PROCESS_HUGE_INDEX) {
+                                                        vm_pagesz = huge_page_size_in_bytes;
+                                                }
                                         }
-                                        value *= multiplier;
+                                        value *= vm_pagesz;
                                         value /= (double)MEGABYTE;
                                         // Add value to data cell, total_col, and total_row
                                         int tmp_row;
@@ -1398,8 +1463,7 @@ int main(int argc, char **argv)
                 optind += 1;
         }
         // If there are no program options or arguments, be extremely compatible
-        // with the old numastat perl script (which is included at the end of this
-        // file for reference)
+        // with the old numastat perl script
         compatibility_mode = (argc == 1);
         init_node_ix_map_and_header();	// enumarate the NUMA nodes
         if (compatibility_mode) {
@@ -1429,101 +1493,3 @@ int main(int argc, char **argv)
         free_node_ix_map_and_header();
         exit(EXIT_SUCCESS);
 }
-
-#if 0
-/*
-
-#!/usr/bin/perl
-# Print numa statistics for all nodes
-# Copyright (C) 2003,2004 Andi Kleen, SuSE Labs.
-#
-# numastat is free software; you can redistribute it and/or
-# modify it under the terms of the GNU General Public
-# License as published by the Free Software Foundation; version
-# 2.
-#
-# numastat is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
-# General Public License for more details.
-
-# You should find a copy of v2 of the GNU General Public License somewhere
-# on your Linux system; if not, write to the Free Software Foundation,
-# Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
-#
-# Example: NUMASTAT_WIDTH=80 watch -n1 numastat
-#
-
-# output width
-$WIDTH=80;
-if (defined($ENV{'NUMASTAT_WIDTH'})) {
-	$WIDTH=$ENV{'NUMASTAT_WIDTH'};
-} else {
-	use POSIX;
-	if (POSIX::isatty(fileno(STDOUT))) {
-		if (open(R, "resize |")) {
-			while (<R>) {
-				$WIDTH=$1 if /COLUMNS=(\d+)/;
-			}
-			close R;
-		}
-	} else {
-		# don't split it up for easier parsing
-		$WIDTH=10000000;
-	}
-}
-$WIDTH = 32 if $WIDTH < 32;
-
-if (! -d "/sys/devices/system/node" ) {
-	print STDERR "sysfs not mounted or system not NUMA aware\n";
-	exit 1;
-}
-
-%stat = ();
-$title = "";
-$mode = 0;
-opendir(NODES, "/sys/devices/system/node") || exit 1;
-foreach $nd (readdir(NODES)) {
-	next unless $nd =~ /node(\d+)/;
-	# On newer kernels, readdir may enumerate the 'node(\d+) subdirs
-	# in opposite order from older kernels--e.g., node{0,1,2,...}
-	# as opposed to node{N,N-1,N-2,...}.  Accommodate this by
-	# switching to new mode so that the stats get emitted in
-	# the same order.
-        #print "readdir(NODES) returns $nd\n";
-	if (!$title && $nd =~ /node0/) {
-		$mode = 1;
-	}
-	open(STAT, "/sys/devices/system/node/$nd/numastat") ||
-			die "cannot open $nd: $!\n";
-	if (! $mode) {
-		$title = sprintf("%16s",$nd) . $title;
-	} else {
-		$title = $title . sprintf("%16s",$nd);
-	}
-	@fields = ();
-	while (<STAT>) {
-		($name, $val) = split;
-		if (! $mode) {
-			$stat{$name} = sprintf("%16u", $val) . $stat{$name};
-		} else {
-			$stat{$name} = $stat{$name} . sprintf("%16u", $val);
-		}
-		push(@fields, $name);
-	}
-	close STAT;
-}
-closedir NODES;
-
-$numfields = int(($WIDTH - 16) / 16);
-$l = 16 * $numfields;
-for ($i = 0; $i < length($title); $i += $l) {
-	print "\n" if $i > 0;
-	printf "%16s%s\n","",substr($title,$i,$l);
-	foreach (@fields) {
-		printf "%-16s%s\n",$_,substr($stat{$_},$i,$l);
-	}
-}
-
-*/
-#endif
