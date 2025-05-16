@@ -427,7 +427,7 @@ done:
 		nodemask_sz = 16;
 		do {
 			nodemask_sz <<= 1;
-			mask = realloc(mask, nodemask_sz / 8);
+			mask = realloc(mask, nodemask_sz / 8 + sizeof(unsigned long));
 			if (!mask)
 				return;
 		} while (get_mempolicy(&pol, mask, nodemask_sz + 1, 0, 0) < 0 && errno == EINVAL &&
@@ -627,9 +627,12 @@ set_preferred_many(void)
 {
 	int oldp;
 	struct bitmask *bmp, *tmp;
+	int old_errno;
 
 	if (has_preferred_many >= 0)
 		return;
+
+	old_errno = errno;
 
 	has_preferred_many = 0;
 
@@ -650,6 +653,7 @@ set_preferred_many(void)
 out:
 	numa_bitmask_free(tmp);
 	numa_bitmask_free(bmp);
+	errno = old_errno;
 }
 
 /*
@@ -858,7 +862,7 @@ make_internal_alias(numa_node_size64);
 
 long numa_node_size(int node, long *freep)
 {
-	long long f2;
+	long long f2 = 0;
 	long sz = numa_node_size64_int(node, &f2);
 	if (freep)
 		*freep = f2;
@@ -867,7 +871,7 @@ long numa_node_size(int node, long *freep)
 
 int numa_available(void)
 {
-	if (get_mempolicy(NULL, NULL, 0, 0, 0) < 0 && errno == ENOSYS)
+	if (get_mempolicy(NULL, NULL, 0, 0, 0) < 0 && (errno == ENOSYS || errno == EPERM))
 		return -1;
 	return 0;
 }
@@ -1033,11 +1037,20 @@ numa_set_interleave_mask_v2(struct bitmask *bmp)
 		setpol(MPOL_INTERLEAVE, bmp);
 }
 
+void
+numa_set_weighted_interleave_mask(struct bitmask *bmp)
+{
+	if (numa_bitmask_equal(bmp, numa_no_nodes_ptr))
+		setpol(MPOL_DEFAULT, bmp);
+	else
+		setpol(MPOL_WEIGHTED_INTERLEAVE, bmp);
+}
+
 SYMVER("numa_get_interleave_mask_v1", "numa_get_interleave_mask@libnuma_1.1")
 nodemask_t
 numa_get_interleave_mask_v1(void)
 {
-	int oldpolicy;
+	int oldpolicy = 0;
 	struct bitmask *bmp;
 	nodemask_t mask;
 
@@ -1057,7 +1070,7 @@ SYMVER("numa_get_interleave_mask_v2", "numa_get_interleave_mask@@libnuma_1.2")
 struct bitmask *
 numa_get_interleave_mask_v2(void)
 {
-	int oldpolicy;
+	int oldpolicy = 0;
 	struct bitmask *bmp;
 
 	bmp = numa_allocate_nodemask();
@@ -1213,7 +1226,7 @@ SYMVER("numa_get_membind_v1", "numa_get_membind@libnuma_1.1")
 nodemask_t
 numa_get_membind_v1(void)
 {
-	int oldpolicy;
+	int oldpolicy = 0;
 	struct bitmask *bmp;
 	nodemask_t nmp;
 
@@ -1236,8 +1249,8 @@ SYMVER("numa_get_membind_v2", "numa_get_membind@@libnuma_1.2")
 struct bitmask *
 numa_get_membind_v2(void)
 {
-	int oldpolicy;
-	struct bitmask *bmp;
+	int oldpolicy = 0;
+	struct bitmask *bmp = NULL;
 
 	bmp = numa_allocate_nodemask();
 	if (!bmp)
@@ -1870,7 +1883,7 @@ out:
 
 static struct bitmask *__numa_preferred(void)
 {
-	int policy;
+	int policy = 0;
 	struct bitmask *bmp;
 
 	bmp = numa_allocate_nodemask();
